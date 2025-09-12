@@ -8,6 +8,6 @@ import (
 func main() {
 	err := cmd.Execute()
 	if err != nil {
-		term.Error(err.Error())
+		term.Error("error %v", err.Error())
 	}
 }
