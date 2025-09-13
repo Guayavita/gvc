@@ -2,6 +2,8 @@ package syntax
 
 import (
 	"fmt"
+
+	"jmpeax.com/guayavita/gvc/internal/diag"
 )
 
 type ParseError struct {
@@ -14,6 +16,16 @@ func (e *ParseError) Error() string {
 		return fmt.Sprintf("parse error at %d:%d: %s", e.Pos.Line, e.Pos.Col, e.Msg)
 	}
 	return "parse error: " + e.Msg
+}
+
+// Diagnostic converts a ParseError into a diag.Diagnostic for pretty printing.
+func (e *ParseError) Diagnostic(file string) diag.Diagnostic {
+	start := diag.Position{File: file, Line: e.Pos.Line, Column: e.Pos.Col}
+	return diag.Diagnostic{
+		Severity: diag.Error,
+		Message:  e.Msg,
+		Span:     diag.Span{Start: start, End: start},
+	}
 }
 
 type Parser struct {

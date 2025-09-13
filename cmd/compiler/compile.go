@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"jmpeax.com/guayavita/gvc/internal/fs"
@@ -22,12 +24,19 @@ var compileCmd = &cobra.Command{
 		content, err := fs.ReadFile(file)
 		if err != nil {
 			log.Errorf("Error reading file: %s", err)
+			return
 		}
 		lx := syntax.NewLexerFromString(content)
 		ps := syntax.NewParser(lx)
 		_, err = ps.ParsePackage()
 		if err != nil {
-			panic(err)
+			if pe, ok := err.(*syntax.ParseError); ok {
+				d := pe.Diagnostic(file)
+				fmt.Println(d.Render(content))
+				return
+			}
+			log.Errorf("parse failed: %v", err)
+			return
 		}
 	},
 }
