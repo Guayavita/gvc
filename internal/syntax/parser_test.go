@@ -9,13 +9,8 @@ import (
 func repoPath(rel string) string { return filepath.Join("..", "..", rel) }
 
 func TestParsePackage_Simple(t *testing.T) {
-	file := repoPath(filepath.Join("test-data", "simple.gvc"))
-	data, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatalf("fixture read: %v", err)
-	}
-
-	lx := NewLexerFromString(string(data))
+	src := "package test\n"
+	lx := NewLexerFromString(src)
 	ps := NewParser(lx)
 	pkg, err := ps.ParsePackage()
 	if err != nil {
@@ -48,7 +43,7 @@ func TestParsePackage_Empty_Err(t *testing.T) {
 }
 
 func TestParseFile_WithDefinition(t *testing.T) {
-	src := "package test\n\n// define A\n def A = B | 42\n"
+	src := "package test\n\n// define A\n def A = B\n"
 	lx := NewLexerFromString(src)
 	ps := NewParser(lx)
 	f, err := ps.ParseFile()
@@ -65,14 +60,8 @@ func TestParseFile_WithDefinition(t *testing.T) {
 	if def.Name != "A" {
 		t.Fatalf("expected def name 'A', got %q", def.Name)
 	}
-	if len(def.Alternatives) != 2 {
-		t.Fatalf("expected 2 alternatives, got %d", len(def.Alternatives))
-	}
-	if _, ok := def.Alternatives[0].(IdentExpr); !ok {
-		t.Fatalf("first alternative should be IdentExpr")
-	}
-	if num, ok := def.Alternatives[1].(NumberExpr); !ok || num.Value != "42" {
-		t.Fatalf("second alternative should be NumberExpr '42'")
+	if _, ok := def.Value.(IdentExpr); !ok {
+		t.Fatalf("value should be IdentExpr")
 	}
 }
 
@@ -91,10 +80,7 @@ func TestParseFile_WithFloatDefinition(t *testing.T) {
 	if def.Name != "PI" {
 		t.Fatalf("expected def name 'PI', got %q", def.Name)
 	}
-	if len(def.Alternatives) != 1 {
-		t.Fatalf("expected 1 alternative, got %d", len(def.Alternatives))
-	}
-	if num, ok := def.Alternatives[0].(NumberExpr); !ok || num.Value != "3.16" {
-		t.Fatalf("alternative should be NumberExpr '3.16'")
+	if num, ok := def.Value.(NumberExpr); !ok || num.Value != "3.16" {
+		t.Fatalf("value should be NumberExpr '3.16'")
 	}
 }

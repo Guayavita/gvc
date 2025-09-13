@@ -176,10 +176,66 @@ func (p *Parser) parseTerm() (Expr, error) {
 	}
 	switch tok.Type {
 	case IDENT:
-		return IdentExpr{Name: tok.Lit, Pos: tok.Pos}, nil
+		// Lookahead for optional function call
+		name := tok.Lit
+		pos := tok.Pos
+		if t2, err := p.peekTok(); err == nil && t2.Type == LPAREN {
+			// consume '('
+			_, _ = p.next()
+			args, err := p.parseCallArgs()
+			if err != nil {
+				return nil, err
+			}
+			// expect ')'
+			if _, err := p.expect(RPAREN); err != nil {
+				return nil, err
+			}
+			return CallExpr{Name: name, Args: args, Pos: pos}, nil
+		}
+		return IdentExpr{Name: name, Pos: pos}, nil
 	case NUMBER:
 		return NumberExpr{Value: tok.Lit, Pos: tok.Pos}, nil
 	default:
 		return nil, &ParseError{Msg: fmt.Sprintf("expected IDENT or NUMBER, got %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
 	}
+}
+
+// parseCallArgs parses zero or more arguments separated by commas.
+// Each argument is restricted to IDENT or NUMBER for now.
+func (p *Parser) parseCallArgs() ([]Expr, error) {
+	// Handle empty argument list: directly next is ')'
+	tok, err := p.peekTok()
+	if err != nil {
+		return nil, err
+	}
+	if tok.Type == RPAREN {
+		return nil, nil
+	}
+	var args []Expr
+	for {
+		// Parse a single arg (IDENT or NUMBER)
+		tok, err := p.next()
+		if err != nil {
+			return nil, err
+		}
+		switch tok.Type {
+		case IDENT:
+			args = append(args, IdentExpr{Name: tok.Lit, Pos: tok.Pos})
+		case NUMBER:
+			args = append(args, NumberExpr{Value: tok.Lit, Pos: tok.Pos})
+		default:
+			return nil, &ParseError{Msg: fmt.Sprintf("expected IDENT or NUMBER as argument, got %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
+		}
+		// After an argument, allow comma or closing paren
+		tok2, err := p.peekTok()
+		if err != nil {
+			return nil, err
+		}
+		if tok2.Type == COMMA {
+			_, _ = p.next() // consume comma
+			continue
+		}
+		break
+	}
+	return args, nil
 }

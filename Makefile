@@ -20,17 +20,21 @@ LDFLAGS := \
   -X '$(COMMONS_PKG).Build=$(BRANCH)' \
   -X '$(COMMONS_PKG).GitCommit=$(COMMIT)'
 
-.PHONY: all build clean run print-vars install
+.PHONY: all build clean run print-vars install test
 
 all: build
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
-build: $(BIN_DIR)
+build: $(BIN_DIR) test
 	@echo "Building $(OUT)"
 	GOFLAGS= CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(OUT) .
 	@echo "Built $(OUT)"
+
+test:
+	@echo "Running tests"
+	go test ./...
 
 run:
 	@echo "Running with injected build metadata"

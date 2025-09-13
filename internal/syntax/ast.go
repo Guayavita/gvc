@@ -45,3 +45,13 @@ type NumberExpr struct {
 }
 
 func (NumberExpr) isExpr() {}
+
+// CallExpr represents a function call expression: NAME '(' args? ')'
+// Arguments are limited to identifiers or numeric literals for now.
+type CallExpr struct {
+	Name string
+	Args []Expr
+	Pos  Pos // position of the function name
+}
+
+func (CallExpr) isExpr() {}

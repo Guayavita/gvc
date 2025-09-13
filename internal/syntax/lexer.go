@@ -27,6 +27,9 @@ const (
 	// Symbols
 	ASSIGN // '='
 	PIPE   // '|'
+	LPAREN // '('
+	RPAREN // ')'
+	COMMA  // ','
 
 	// Other Keywords
 	DEF
@@ -48,6 +51,12 @@ func (t TokenType) String() string {
 		return "ASSIGN"
 	case PIPE:
 		return "PIPE"
+	case LPAREN:
+		return "LPAREN"
+	case RPAREN:
+		return "RPAREN"
+	case COMMA:
+		return "COMMA"
 	case DEF:
 		return "DEF"
 	default:
@@ -251,6 +260,12 @@ func (lx *Lexer) NextToken() (Token, error) {
 		return Token{Type: ASSIGN, Lit: "=", Pos: startPos}, nil
 	case '|':
 		return Token{Type: PIPE, Lit: "|", Pos: startPos}, nil
+	case '(':
+		return Token{Type: LPAREN, Lit: "(", Pos: startPos}, nil
+	case ')':
+		return Token{Type: RPAREN, Lit: ")", Pos: startPos}, nil
+	case ',':
+		return Token{Type: COMMA, Lit: ",", Pos: startPos}, nil
 	}
 
 	// Identifiers or keywords
