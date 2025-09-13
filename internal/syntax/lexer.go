@@ -20,6 +20,16 @@ const (
 
 	// Identifiers
 	IDENT
+
+	// Literals
+	NUMBER
+
+	// Symbols
+	ASSIGN // '='
+	PIPE   // '|'
+
+	// Other Keywords
+	DEF
 )
 
 func (t TokenType) String() string {
@@ -32,6 +42,14 @@ func (t TokenType) String() string {
 		return "PACKAGE"
 	case IDENT:
 		return "IDENT"
+	case NUMBER:
+		return "NUMBER"
+	case ASSIGN:
+		return "ASSIGN"
+	case PIPE:
+		return "PIPE"
+	case DEF:
+		return "DEF"
 	default:
 		// Minimal itoa to avoid importing fmt
 		return "TokenType(" + itoa(int(t)) + ")"
@@ -186,6 +204,55 @@ func (lx *Lexer) NextToken() (Token, error) {
 		return Token{}, err
 	}
 
+	// Number literals (allow underscores between digits) and optional fractional part
+	if unicode.IsDigit(r) {
+		var sb strings.Builder
+		sb.WriteRune(r)
+		seenDot := false
+		for {
+			r2, size2, err2 := lx.readRune()
+			if err2 != nil {
+				if err2 == io.EOF {
+					break
+				}
+				return Token{}, err2
+			}
+			if unicode.IsDigit(r2) || r2 == '_' {
+				sb.WriteRune(r2)
+				continue
+			}
+			if r2 == '.' && !seenDot {
+				// ensure there's at least one digit after the dot
+				r3, size3, err3 := lx.readRune()
+				if err3 == nil && unicode.IsDigit(r3) {
+					sb.WriteRune('.')
+					sb.WriteRune(r3)
+					seenDot = true
+					continue
+				}
+				// not a fractional part; unread r3 (if any) and the '.' then stop number
+				if err3 == nil {
+					lx.unreadRune(r3, size3)
+				}
+				lx.unreadRune(r2, size2)
+				break
+			}
+			// Not part of number
+			lx.unreadRune(r2, size2)
+			break
+		}
+		lit := sb.String()
+		return Token{Type: NUMBER, Lit: lit, Pos: startPos}, nil
+	}
+
+	// Single-char symbols
+	switch r {
+	case '=':
+		return Token{Type: ASSIGN, Lit: "=", Pos: startPos}, nil
+	case '|':
+		return Token{Type: PIPE, Lit: "|", Pos: startPos}, nil
+	}
+
 	// Identifiers or keywords
 	if isIdentStart(r) {
 		var sb strings.Builder
@@ -207,6 +274,9 @@ func (lx *Lexer) NextToken() (Token, error) {
 		lit := sb.String()
 		if lit == "package" {
 			return Token{Type: PACKAGE, Lit: lit, Pos: startPos}, nil
+		}
+		if lit == "def" {
+			return Token{Type: DEF, Lit: lit, Pos: startPos}, nil
 		}
 		return Token{Type: IDENT, Lit: lit, Pos: startPos}, nil
 	}

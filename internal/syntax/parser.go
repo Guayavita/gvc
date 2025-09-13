@@ -49,6 +49,16 @@ func (p *Parser) next() (Token, error) {
 	return p.lex.NextToken()
 }
 
+func (p *Parser) peekTok() (Token, error) {
+	if p.peek != nil {
+		return *p.peek, p.peekE
+	}
+	tok, err := p.lex.NextToken()
+	p.peek = &tok
+	p.peekE = err
+	return tok, err
+}
+
 func (p *Parser) expect(tt TokenType) (Token, error) {
 	tok, err := p.next()
 	if err != nil {
@@ -92,4 +102,84 @@ func (p *Parser) ParsePackage() (*PackageDecl, error) {
 		Name: tName.Lit,
 		Pos:  tPkg.Pos,
 	}, nil
+}
+
+// ParseFile parses an optional package declaration followed by zero or more definitions until EOF.
+func (p *Parser) ParseFile() (*File, error) {
+	return p.parseFileInline()
+}
+
+func (p *Parser) parseFileInline() (*File, error) {
+	f := &File{}
+	// Inline optional package parsing without requiring EOF
+	tok, err := p.peekTok()
+	if err != nil {
+		return nil, err
+	}
+	if tok.Type == PACKAGE {
+		// consume 'package' and IDENT
+		tPkg, err := p.expect(PACKAGE)
+		if err != nil {
+			return nil, err
+		}
+		tName, err := p.expect(IDENT)
+		if err != nil {
+			return nil, err
+		}
+		f.Package = &PackageDecl{Name: tName.Lit, Pos: tPkg.Pos}
+	}
+	// Now parse zero or more definitions until EOF
+	for {
+		tok, err := p.peekTok()
+		if err != nil {
+			return nil, err
+		}
+		if tok.Type == EOF {
+			break
+		}
+		if tok.Type != DEF {
+			return nil, &ParseError{Msg: fmt.Sprintf("expected 'def' or EOF, got %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
+		}
+		def, err := p.parseDefinition()
+		if err != nil {
+			return nil, err
+		}
+		f.Definitions = append(f.Definitions, *def)
+	}
+	return f, nil
+}
+
+func (p *Parser) parseDefinition() (*Definition, error) {
+	tDef, err := p.expect(DEF)
+	if err != nil {
+		return nil, err
+	}
+	tName, err := p.expect(IDENT)
+	if err != nil {
+		return nil, err
+	}
+	_, err = p.expect(ASSIGN)
+	if err != nil {
+		return nil, err
+	}
+	e, err := p.parseTerm()
+	if err != nil {
+		return nil, err
+	}
+	return &Definition{Name: tName.Lit, Value: e, Pos: tDef.Pos}, nil
+}
+
+func (p *Parser) parseTerm() (Expr, error) {
+	tok, err := p.next()
+	if err != nil {
+		return nil, err
+	}
+	switch tok.Type {
+	case IDENT:
+		return IdentExpr{Name: tok.Lit, Pos: tok.Pos}, nil
+	case NUMBER:
+		return NumberExpr{Value: tok.Lit, Pos: tok.Pos}, nil
+	default:
+		return nil, &ParseError{Msg: fmt.Sprintf("expected IDENT or NUMBER, got %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
+	}
 }

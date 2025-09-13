@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/charmbracelet/log"
@@ -28,9 +29,10 @@ var compileCmd = &cobra.Command{
 		}
 		lx := syntax.NewLexerFromString(content)
 		ps := syntax.NewParser(lx)
-		_, err = ps.ParsePackage()
+		gvcAst, err := ps.ParseFile()
 		if err != nil {
-			if pe, ok := err.(*syntax.ParseError); ok {
+			var pe *syntax.ParseError
+			if errors.As(err, &pe) {
 				d := pe.Diagnostic(file)
 				fmt.Println(d.Render(content))
 				return
@@ -38,6 +40,7 @@ var compileCmd = &cobra.Command{
 			log.Errorf("parse failed: %v", err)
 			return
 		}
+		log.Debugf("Package name: %s , package Variables %v", gvcAst.Package.Name, gvcAst.Definitions)
 	},
 }
 

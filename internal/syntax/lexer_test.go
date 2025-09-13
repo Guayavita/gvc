@@ -59,3 +59,44 @@ func TestLexer_IllegalRune(t *testing.T) {
 		t.Fatalf("expected '$' literal, got %q", tok.Lit)
 	}
 }
+
+func TestLexer_NumberLiteral(t *testing.T) {
+	lx := NewLexerFromString("12345")
+	tok, err := lx.NextToken()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok.Type != NUMBER || tok.Lit != "12345" {
+		t.Fatalf("expected NUMBER '12345', got %v %q", tok.Type, tok.Lit)
+	}
+}
+
+func TestLexer_NumberWithUnderscores(t *testing.T) {
+	lx := NewLexerFromString("1_000_000\n")
+	tok, err := lx.NextToken()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok.Type != NUMBER || tok.Lit != "1_000_000" {
+		t.Fatalf("expected NUMBER '1_000_000', got %v %q", tok.Type, tok.Lit)
+	}
+	// Next should be EOF
+	tok, err = lx.NextToken()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok.Type != EOF {
+		t.Fatalf("expected EOF, got %v", tok.Type)
+	}
+}
+
+func TestLexer_FloatLiteral(t *testing.T) {
+	lx := NewLexerFromString("3.16 ")
+	tok, err := lx.NextToken()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok.Type != NUMBER || tok.Lit != "3.16" {
+		t.Fatalf("expected NUMBER '3.16', got %v %q", tok.Type, tok.Lit)
+	}
+}
