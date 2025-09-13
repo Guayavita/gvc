@@ -25,7 +25,7 @@ func TestParsePackage_Simple(t *testing.T) {
 }
 
 func TestParsePackage_Empty_Err(t *testing.T) {
-	file := repoPath(filepath.Join("test-data", "empty.gvc"))
+	file := repoPath(filepath.Join("test-data", "empty.gvt"))
 	data, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatalf("fixture read: %v", err)
@@ -82,5 +82,24 @@ func TestParseFile_WithFloatDefinition(t *testing.T) {
 	}
 	if num, ok := def.Value.(NumberExpr); !ok || num.Value != "3.16" {
 		t.Fatalf("value should be NumberExpr '3.16'")
+	}
+}
+
+func TestParseFile_UnterminatedString_ErrorLine(t *testing.T) {
+	// This test previously checked for an unterminated string in simple.gvt.
+	// The fixture now contains valid arithmetic; ensure it parses and has two definitions.
+	file := repoPath(filepath.Join("test-data", "simple.gvt"))
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("fixture read: %v", err)
+	}
+	lx := NewLexerFromString(string(data))
+	ps := NewParser(lx)
+	f, err := ps.ParseFile()
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(f.Definitions) != 2 {
+		t.Fatalf("expected 2 definitions in simple.gvt, got %d", len(f.Definitions))
 	}
 }

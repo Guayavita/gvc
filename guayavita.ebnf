@@ -1,0 +1,77 @@
+# Guayavita v1 — complete EBNF grammar
+# Place in docs/grammar.ebnf
+
+Program         = { TopLevelDecl } ;
+
+TopLevelDecl    = ConstDecl | TypeDecl | FunDecl | VarDecl ;
+
+# --- Declarations ---
+ConstDecl       = "export"? "def" Identifier "=" Expression ";" ;
+TypeDecl        = "type" Identifier "=" ( StructDecl | EnumDecl ) ;
+FunDecl         = "fun" Identifier GenericParams? "(" Params? ")" ReturnType Block ;
+VarDecl         = "def" Identifier "=" Expression ";" ;
+
+# --- Types ---
+GenericParams   = "<" Identifier { "," Identifier } ">" ;
+Params          = Param { "," Param } ;
+Param           = Identifier ":" Type ;
+
+ReturnType      = ":" Type ;
+
+Type            = BasicType | ArrayType | GenericType | OptionalType ;
+BasicType       = "i8" | "i32" | "i64"
+                | "u8" | "u16" | "u32" | "u64"
+                | "f32" | "f64"
+                | "string" | "bool" | "none"
+                | Identifier ;
+ArrayType       = "[" Type "*" "]" ;
+OptionalType    = Type "?" ;
+GenericType     = Identifier "<" Type { "," Type } ">" ;
+
+# --- Control Flow ---
+Block           = "{" { Statement } "}" ;
+Statement       = VarDecl
+                | ExpressionStmt
+                | IfStmt
+                | ForStmt
+                | HandleStmt
+                | ReturnStmt ;
+
+ExpressionStmt  = Expression ";" ;
+IfStmt          = "if" Expression Block { "else if" Expression Block } [ "else" Block ] ;
+ForStmt         = "for" "(" VarDecl? Expression? ";" Expression? ")" Block
+                | "for" VarDecl "in" Expression Block ;
+HandleStmt      = "handle" Expression Block ;
+ReturnStmt      = "return" Expression ";" ;
+
+# --- Expressions (with precedence) ---
+Expression      = OrExpr ;
+
+OrExpr          = AndExpr { "||" AndExpr } ;
+AndExpr         = CmpExpr { "&&" CmpExpr } ;
+CmpExpr         = AddExpr { ("==" | "!=" | "<" | "<=" | ">" | ">=") AddExpr } ;
+AddExpr         = MulExpr { ("+" | "-") MulExpr } ;
+MulExpr         = UnaryExpr { ("*" | "/" | "%") UnaryExpr } ;
+UnaryExpr       = [ "!" | "-" | "+" ] Primary ;
+Primary         = Literal
+                | Identifier
+                | CallExpr
+                | ArrayLiteral
+                | StructLiteral
+                | "(" Expression ")" ;
+
+# --- Literals ---
+Literal         = Number | String | "true" | "false" ;
+Number          = Digit { Digit } ;
+String          = '"' { Character } '"' ;
+Digit           = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+
+# --- Calls & Aggregates ---
+CallExpr        = Identifier "(" [ Expression { "," Expression } ] ")" ;
+ArrayLiteral    = "[" [ Expression { "," Expression } ] "]" ;
+StructLiteral   = Identifier "{" [ FieldInit { "," FieldInit } ] "}" ;
+FieldInit       = Identifier ":" Expression ;
+
+# --- Types: Structs & Enums ---
+StructDecl      = "struct" "{" { Identifier ":" Type "," } "}" ;
+EnumDecl        = "enum" "{" Identifier { "," Identifier } "}" ;

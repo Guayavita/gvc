@@ -31,7 +31,7 @@ func TestValidateFile_IsDirectory(t *testing.T) {
 }
 
 func TestValidateFile_OK(t *testing.T) {
-	file := repoPath(filepath.Join("test-data", "simple.gvc"))
+	file := repoPath(filepath.Join("test-data", "simple.gvt"))
 	if _, err := os.Stat(file); err != nil {
 		t.Fatalf("test fixture missing: %v", err)
 	}
@@ -41,13 +41,13 @@ func TestValidateFile_OK(t *testing.T) {
 }
 
 func TestReadFile(t *testing.T) {
-	file := repoPath(filepath.Join("test-data", "simple.gvc"))
+	file := repoPath(filepath.Join("test-data", "simple.gvt"))
 	content, err := ReadFile(file)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(content) == 0 {
-		t.Fatalf("expected some content in simple.gvc")
+		t.Fatalf("expected some content in simple.gvt")
 	}
 	// Should start with the word 'package'
 	wantPrefix := "package "

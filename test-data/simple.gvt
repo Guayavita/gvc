@@ -1,0 +1,4 @@
+package test
+
+def PI = 3.14
+def a = ""

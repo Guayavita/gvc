@@ -162,41 +162,189 @@ func (p *Parser) parseDefinition() (*Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	e, err := p.parseTerm()
+	e, err := p.parseExpression()
 	if err != nil {
 		return nil, err
+	}
+	// optional semicolon
+	if tok, _ := p.peekTok(); tok.Type == SEMICOLON {
+		_, _ = p.next()
 	}
 	return &Definition{Name: tName.Lit, Value: e, Pos: tDef.Pos}, nil
 }
 
-func (p *Parser) parseTerm() (Expr, error) {
+// Expression parsing with precedence: or -> and -> cmp -> add -> mul -> unary -> primary
+func (p *Parser) parseExpression() (Expr, error) { return p.parseOr() }
+
+func (p *Parser) parseOr() (Expr, error) {
+	left, err := p.parseAnd()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		tok, err := p.peekTok()
+		if err != nil {
+			return nil, err
+		}
+		if tok.Type != OROR {
+			break
+		}
+		_, _ = p.next()
+		right, err := p.parseAnd()
+		if err != nil {
+			return nil, err
+		}
+		left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
+	}
+	return left, nil
+}
+
+func (p *Parser) parseAnd() (Expr, error) {
+	left, err := p.parseCmp()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		tok, err := p.peekTok()
+		if err != nil {
+			return nil, err
+		}
+		if tok.Type != ANDAND {
+			break
+		}
+		_, _ = p.next()
+		right, err := p.parseCmp()
+		if err != nil {
+			return nil, err
+		}
+		left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
+	}
+	return left, nil
+}
+
+func (p *Parser) parseCmp() (Expr, error) {
+	left, err := p.parseAdd()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		tok, err := p.peekTok()
+		if err != nil {
+			return nil, err
+		}
+		switch tok.Type {
+		case EQEQ, NEQ, LANGLE, LTE, RANGLE, GTE:
+			_, _ = p.next()
+			right, err := p.parseAdd()
+			if err != nil {
+				return nil, err
+			}
+			left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
+		default:
+			return left, nil
+		}
+	}
+}
+
+func (p *Parser) parseAdd() (Expr, error) {
+	left, err := p.parseMul()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		tok, err := p.peekTok()
+		if err != nil {
+			return nil, err
+		}
+		if tok.Type != PLUS && tok.Type != MINUS {
+			return left, nil
+		}
+		_, _ = p.next()
+		right, err := p.parseMul()
+		if err != nil {
+			return nil, err
+		}
+		left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
+	}
+}
+
+func (p *Parser) parseMul() (Expr, error) {
+	left, err := p.parseUnary()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		tok, err := p.peekTok()
+		if err != nil {
+			return nil, err
+		}
+		if tok.Type != STAR && tok.Type != SLASH && tok.Type != PERCENT {
+			return left, nil
+		}
+		_, _ = p.next()
+		right, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
+	}
+}
+
+func (p *Parser) parseUnary() (Expr, error) {
+	tok, err := p.peekTok()
+	if err != nil {
+		return nil, err
+	}
+	switch tok.Type {
+	case BANG, MINUS, PLUS:
+		_, _ = p.next()
+		right, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		return UnaryExpr{Op: tok.Type, Right: right, Pos: tok.Pos}, nil
+	default:
+		return p.parsePrimary()
+	}
+}
+
+func (p *Parser) parsePrimary() (Expr, error) {
 	tok, err := p.next()
 	if err != nil {
 		return nil, err
 	}
 	switch tok.Type {
+	case NUMBER:
+		return NumberExpr{Value: tok.Lit, Pos: tok.Pos}, nil
+	case STRING:
+		return StringExpr{Value: tok.Lit, Pos: tok.Pos}, nil
 	case IDENT:
-		// Lookahead for optional function call
+		// optional call: IDENT '(' args? ')'
 		name := tok.Lit
 		pos := tok.Pos
 		if t2, err := p.peekTok(); err == nil && t2.Type == LPAREN {
-			// consume '('
 			_, _ = p.next()
 			args, err := p.parseCallArgs()
 			if err != nil {
 				return nil, err
 			}
-			// expect ')'
 			if _, err := p.expect(RPAREN); err != nil {
 				return nil, err
 			}
 			return CallExpr{Name: name, Args: args, Pos: pos}, nil
 		}
 		return IdentExpr{Name: name, Pos: pos}, nil
-	case NUMBER:
-		return NumberExpr{Value: tok.Lit, Pos: tok.Pos}, nil
+	case LPAREN:
+		e, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(RPAREN); err != nil {
+			return nil, err
+		}
+		return e, nil
 	default:
-		return nil, &ParseError{Msg: fmt.Sprintf("expected IDENT or NUMBER, got %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
+		return nil, &ParseError{Msg: fmt.Sprintf("unexpected token in expression: %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
 	}
 }
 
