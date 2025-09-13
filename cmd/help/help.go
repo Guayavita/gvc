@@ -1,9 +1,9 @@
 package help
 
 import (
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"jmpeax.com/guayavita/gvc/internal/commons"
-	"jmpeax.com/guayavita/gvc/internal/term"
 )
 
 var versionCmd = &cobra.Command{
@@ -11,7 +11,7 @@ var versionCmd = &cobra.Command{
 	Short: "Version",
 	Long:  "Show build/version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		term.Info("Version: %s\nBuild: %s\nGitCommit: %s", commons.Version, commons.Build, commons.GitCommit)
+		log.Printf("Version: %s\nBuild: %s\nGitCommit: %s", commons.Version, commons.Build, commons.GitCommit)
 	},
 }
 
