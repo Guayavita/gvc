@@ -1,5 +1,5 @@
 package main
 
 fun main() : none {
-   print("Hello, world! Chat de Otakus")
+   print("Hello, world! Chat de Otakus ! \u1F47E")
 }

@@ -1,8 +1,6 @@
 package codegen
 
 import (
-	"fmt"
-
 	"jmpeax.com/guayavita/gvc/internal/syntax"
 )
 
@@ -14,7 +12,7 @@ func (b *LLVMCodeBuilder) generateDecl(decl syntax.Decl) error {
 	case *syntax.VarDecl:
 		return b.generateVarDecl(d)
 	default:
-		return fmt.Errorf("unsupported declaration type: %T", decl)
+		return b.errorAt(d, "unsupported declaration type: %T", decl)
 	}
 }
 

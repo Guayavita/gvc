@@ -1,8 +1,6 @@
 package codegen
 
 import (
-	"fmt"
-
 	"jmpeax.com/guayavita/gvc/internal/syntax"
 	"tinygo.org/x/go-llvm"
 )
@@ -17,7 +15,7 @@ func (b *LLVMCodeBuilder) generateExpr(expr syntax.Expr) (llvm.Value, error) {
 	case *syntax.CallExpr:
 		return b.generateCallExpr(e)
 	default:
-		return llvm.Value{}, fmt.Errorf("unsupported expression type: %T", expr)
+		return llvm.Value{}, b.errorAt(e, "unsupported expression type: %T", expr)
 	}
 }
 
@@ -32,7 +30,7 @@ func (b *LLVMCodeBuilder) generateBasicLit(lit *syntax.BasicLit) (llvm.Value, er
 		str := b.builder.CreateGlobalStringPtr(lit.Value, "str")
 		return str, nil
 	default:
-		return llvm.Value{}, fmt.Errorf("unsupported literal kind: %s", lit.Kind)
+		return llvm.Value{}, b.errorAt(lit, "unsupported literal kind: %s", lit.Kind)
 	}
 }
 
@@ -58,7 +56,7 @@ func (b *LLVMCodeBuilder) generateBinaryExpr(expr *syntax.BinaryExpr) (llvm.Valu
 	case "/":
 		return b.builder.CreateSDiv(left, right, "div"), nil
 	default:
-		return llvm.Value{}, fmt.Errorf("unsupported binary operator: %s", expr.Op)
+		return llvm.Value{}, b.errorAt(expr, "unsupported binary operator: %s", expr.Op)
 	}
 }
 
@@ -67,7 +65,7 @@ func (b *LLVMCodeBuilder) generateCallExpr(expr *syntax.CallExpr) (llvm.Value, e
 	// Get function name from identifier
 	ident, ok := expr.Fun.(*syntax.Ident)
 	if !ok {
-		return llvm.Value{}, fmt.Errorf("unsupported function call expression: %T", expr.Fun)
+		return llvm.Value{}, b.errorAt(expr, "unsupported function call expression: %T", expr.Fun)
 	}
 
 	funcName := ident.Name
@@ -80,7 +78,7 @@ func (b *LLVMCodeBuilder) generateCallExpr(expr *syntax.CallExpr) (llvm.Value, e
 	// For other functions, try to find them in the module
 	function := b.module.NamedFunction(funcName)
 	if function.IsNil() {
-		return llvm.Value{}, fmt.Errorf("undefined function: %s", funcName)
+		return llvm.Value{}, b.errorAt(expr, "undefined function: %s", funcName)
 	}
 
 	// Generate arguments
@@ -88,7 +86,7 @@ func (b *LLVMCodeBuilder) generateCallExpr(expr *syntax.CallExpr) (llvm.Value, e
 	for _, arg := range expr.Args {
 		argValue, err := b.generateExpr(arg)
 		if err != nil {
-			return llvm.Value{}, fmt.Errorf("failed to generate argument: %w", err)
+			return llvm.Value{}, b.errorAt(expr, "failed to generate argument: %v", err)
 		}
 		args = append(args, argValue)
 	}
@@ -100,19 +98,19 @@ func (b *LLVMCodeBuilder) generateCallExpr(expr *syntax.CallExpr) (llvm.Value, e
 // generatePrintCall generates LLVM IR for a print function call
 func (b *LLVMCodeBuilder) generatePrintCall(expr *syntax.CallExpr) (llvm.Value, error) {
 	if len(expr.Args) != 1 {
-		return llvm.Value{}, fmt.Errorf("print function expects exactly 1 argument, got %d", len(expr.Args))
+		return llvm.Value{}, b.errorAt(expr, "print function expects exactly 1 argument, got %d", len(expr.Args))
 	}
 
 	// Generate the string argument
 	arg, err := b.generateExpr(expr.Args[0])
 	if err != nil {
-		return llvm.Value{}, fmt.Errorf("failed to generate print argument: %w", err)
+		return llvm.Value{}, b.errorAt(expr, "failed to generate print argument: %v", err)
 	}
 
 	// Get the print function
 	printFunc := b.module.NamedFunction("print")
 	if printFunc.IsNil() {
-		return llvm.Value{}, fmt.Errorf("print function not found - external functions not initialized")
+		return llvm.Value{}, b.errorAt(expr, "print function not found - external functions not initialized")
 	}
 
 	// Call print function

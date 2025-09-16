@@ -3,6 +3,7 @@ package codegen
 import (
 	"fmt"
 
+	"jmpeax.com/guayavita/gvc/internal/diag"
 	"jmpeax.com/guayavita/gvc/internal/syntax"
 	"tinygo.org/x/go-llvm"
 )
@@ -29,6 +30,8 @@ func (b *LLVMCodeBuilder) generateIR(ast *syntax.File) error {
 
 	// Verify the module
 	if err := llvm.VerifyModule(b.module, llvm.ReturnStatusAction); err != nil {
+		// attach a diagnostic at file start as we don't have a specific node here
+		b.addDiagnostic(diag.Error, diag.Position{File: b.config.InputFile, Line: 1, Column: 1}, fmt.Sprintf("module verification failed: %v", err))
 		return fmt.Errorf("module verification failed: %w", err)
 	}
 

@@ -1,8 +1,6 @@
 package codegen
 
 import (
-	"fmt"
-
 	"jmpeax.com/guayavita/gvc/internal/syntax"
 )
 
@@ -36,6 +34,6 @@ func (b *LLVMCodeBuilder) generateStmt(stmt syntax.Stmt) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unsupported statement type: %T", stmt)
+		return b.errorAt(s, "unsupported statement type: %T", stmt)
 	}
 }

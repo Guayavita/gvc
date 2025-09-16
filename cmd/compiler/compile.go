@@ -69,7 +69,7 @@ var compileCmd = &cobra.Command{
 
 			// Create and configure the code builder
 			builder := codegen.NewCodeBuilder()
-			builder.SetInputFile(file).SetOutputDir(outputDir)
+			builder.SetInputFile(file).SetOutputDir(outputDir).SetSource(content)
 
 			if target != "" {
 				builder.SetTarget(target)

@@ -3,6 +3,7 @@ package codegen
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -71,32 +72,33 @@ func (b *LLVMCodeBuilder) compileToBinary() error {
 	return nil
 }
 
-// linkExecutable creates an executable from assembly code using system tools
+// linkExecutable links the generated object file into a real executable using the system linker
 func (b *LLVMCodeBuilder) linkExecutable(asmFileName, outputFileName string) error {
-	// Use LLVM's MC (Machine Code) layer to create executable directly from object code
-	// This avoids dependency on external system linkers
-
-	// Instead of using assembly, let's create a proper executable using LLVM's capabilities
-	// We'll use the object file and create a minimal executable structure
-
-	// For now, we'll use a simpler approach: create an ELF/Mach-O executable header
-	// and append our object code. This is a basic implementation.
-
+	// Derive the object file name from the output name
 	objectFileName := strings.TrimSuffix(outputFileName, filepath.Ext(outputFileName)) + ".o"
-	objectData, err := os.ReadFile(objectFileName)
-	if err != nil {
-		return fmt.Errorf("failed to read object file: %w", err)
+
+	if _, err := os.Stat(objectFileName); err != nil {
+		return fmt.Errorf("object file not found for linking: %w", err)
 	}
 
-	// Create a minimal executable wrapper for the object code
-	executableData, err := b.createExecutableWrapper(objectData)
-	if err != nil {
-		return fmt.Errorf("failed to create executable wrapper: %w", err)
+	// Prefer clang, fall back to cc
+	linker := "clang"
+	if _, err := exec.LookPath(linker); err != nil {
+		linker = "cc"
+		if _, err2 := exec.LookPath(linker); err2 != nil {
+			return fmt.Errorf("no suitable linker found (clang/cc)")
+		}
 	}
 
-	// Write the executable
-	if err := os.WriteFile(outputFileName, executableData, 0755); err != nil {
-		return fmt.Errorf("failed to write executable: %w", err)
+	args := []string{objectFileName, "-o", outputFileName}
+	cmd := exec.Command(linker, args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("linker failed: %v: %s", err, string(out))
+	}
+
+	// Ensure executable permissions
+	if err := os.Chmod(outputFileName, 0755); err != nil {
+		return fmt.Errorf("failed to set executable permissions: %w", err)
 	}
 
 	return nil

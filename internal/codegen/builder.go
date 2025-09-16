@@ -3,6 +3,7 @@ package codegen
 import (
 	"fmt"
 
+	"jmpeax.com/guayavita/gvc/internal/diag"
 	"jmpeax.com/guayavita/gvc/internal/syntax"
 	"tinygo.org/x/go-llvm"
 )
@@ -22,6 +23,7 @@ type BuilderConfig struct {
 	Target    string // LLVM target triple
 	OutputDir string
 	InputFile string
+	Source    string // original source content for diagnostics rendering
 }
 
 // CodeBuilder interface defines the builder pattern for code generation
@@ -30,7 +32,9 @@ type CodeBuilder interface {
 	SetMode(mode CompilationMode) CodeBuilder
 	SetOutputDir(dir string) CodeBuilder
 	SetInputFile(file string) CodeBuilder
+	SetSource(src string) CodeBuilder
 	Build(ast *syntax.File) error
+	Diagnostics() []diag.Diagnostic
 }
 
 // LLVMCodeBuilder implements CodeBuilder using LLVM
@@ -41,6 +45,7 @@ type LLVMCodeBuilder struct {
 	builder         llvm.Builder
 	externals       *ExternalRegistry
 	printedLiterals []string // Track string literals for wrapper script
+	diagnostics     []diag.Diagnostic
 }
 
 // NewCodeBuilder creates a new LLVM-based code builder
@@ -68,28 +73,85 @@ func (b *LLVMCodeBuilder) SetInputFile(file string) CodeBuilder {
 	return b
 }
 
+// SetSource sets the original source content for diagnostics rendering
+func (b *LLVMCodeBuilder) SetSource(src string) CodeBuilder {
+	b.config.Source = src
+	return b
+}
+
+// Diagnostics returns collected diagnostics
+func (b *LLVMCodeBuilder) Diagnostics() []diag.Diagnostic {
+	return b.diagnostics
+}
+
 // Build compiles the AST according to the builder configuration
 func (b *LLVMCodeBuilder) Build(ast *syntax.File) error {
 	// Initialize LLVM components
 	if err := b.initializeLLVM(); err != nil {
+		// No position info here; record a generic diagnostic
+		b.addDiagnostic(diag.Error, diag.Position{File: b.config.InputFile, Line: 1, Column: 1}, fmt.Sprintf("failed to initialize LLVM: %v", err))
 		return fmt.Errorf("failed to initialize LLVM: %w", err)
 	}
 	defer b.cleanup()
 
 	// Generate LLVM IR from AST
 	if err := b.generateIR(ast); err != nil {
-		return fmt.Errorf("failed to generate LLVM IR: %w", err)
+		// Attach to file position if available
+		pos := diag.Position{File: b.config.InputFile, Line: 1, Column: 1}
+		if ast != nil {
+			pos = ast.Pos()
+		}
+		b.addDiagnostic(diag.Error, pos, fmt.Sprintf("failed to generate LLVM IR: %v", err))
+		return err
 	}
 
 	// Process according to mode
 	switch b.config.Mode {
 	case ModeBinary:
-		return b.compileToBinary()
+		if err := b.compileToBinary(); err != nil {
+			b.addDiagnostic(diag.Error, diag.Position{File: b.config.InputFile, Line: 1, Column: 1}, fmt.Sprintf("compilation to binary failed: %v", err))
+			return err
+		}
+		return nil
 	case ModeJIT:
-		return b.executeJIT()
+		if err := b.executeJIT(); err != nil {
+			b.addDiagnostic(diag.Error, diag.Position{File: b.config.InputFile, Line: 1, Column: 1}, fmt.Sprintf("JIT execution failed: %v", err))
+			return err
+		}
+		return nil
 	case ModeEmitLLVM:
-		return b.emitLLVM()
+		if err := b.emitLLVM(); err != nil {
+			b.addDiagnostic(diag.Error, diag.Position{File: b.config.InputFile, Line: 1, Column: 1}, fmt.Sprintf("emit LLVM IR failed: %v", err))
+			return err
+		}
+		return nil
 	default:
-		return fmt.Errorf("unsupported compilation mode: %d", b.config.Mode)
+		err := fmt.Errorf("unsupported compilation mode: %d", b.config.Mode)
+		b.addDiagnostic(diag.Error, diag.Position{File: b.config.InputFile, Line: 1, Column: 1}, err.Error())
+		return err
 	}
+}
+
+// addDiagnostic appends a diagnostic to the builder
+func (b *LLVMCodeBuilder) addDiagnostic(sev diag.Severity, pos diag.Position, msg string) {
+	d := diag.Diagnostic{
+		Severity: sev,
+		Message:  msg,
+		Span: diag.Span{
+			Start: pos,
+			End:   pos,
+		},
+	}
+	b.diagnostics = append(b.diagnostics, d)
+}
+
+// errorAt records a diagnostic at the given node position and returns an error
+func (b *LLVMCodeBuilder) errorAt(node syntax.Node, format string, a ...any) error {
+	msg := fmt.Sprintf(format, a...)
+	pos := diag.Position{File: b.config.InputFile, Line: 1, Column: 1}
+	if node != nil {
+		pos = node.Pos()
+	}
+	b.addDiagnostic(diag.Error, pos, msg)
+	return fmt.Errorf("%s", msg)
 }
