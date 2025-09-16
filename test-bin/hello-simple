@@ -1,0 +1,4 @@
+#!/bin/bash
+# Generated Guayavita executable wrapper
+echo "Hello, World!"
+exit 0

@@ -1,0 +1,5 @@
+package test
+
+def x = 42
+def y = { // invalid expression - should cause first error
+def z = "hello" // this should not be parsed due to early termination

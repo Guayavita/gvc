@@ -3,6 +3,20 @@ package syntax
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// Color styles for different AST elements
+var (
+	fileStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true) // Blue
+	declStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))            // Green
+	stmtStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))            // Yellow
+	exprStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))             // Red
+	identStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))            // Cyan
+	literalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))            // Magenta
+	keywordStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)  // Purple
+	fieldStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))             // Gray
 )
 
 // PrintFile returns a pretty-printed string representation of the AST
@@ -12,9 +26,9 @@ func PrintFile(file *File) string {
 	}
 
 	var builder strings.Builder
-	builder.WriteString("File {\n")
-	builder.WriteString(fmt.Sprintf("  Package: %s\n", file.Package))
-	builder.WriteString("  Declarations: [\n")
+	builder.WriteString(fileStyle.Render("File") + " {\n")
+	builder.WriteString(fmt.Sprintf("  %s: %s\n", fieldStyle.Render("Package"), identStyle.Render(file.Package)))
+	builder.WriteString(fmt.Sprintf("  %s: [\n", fieldStyle.Render("Declarations")))
 
 	for _, decl := range file.Decls {
 		builder.WriteString(printDecl(decl, "    "))
@@ -43,18 +57,20 @@ func printDecl(decl Decl, indent string) string {
 
 func printFunDecl(decl *FunDecl, indent string) string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("%sFunDecl {\n", indent))
-	builder.WriteString(fmt.Sprintf("%s  Name: %s\n", indent, decl.Name))
-	builder.WriteString(fmt.Sprintf("%s  Type: %s\n", indent, decl.Type))
-	builder.WriteString(fmt.Sprintf("%s  Params: [\n", indent))
+	builder.WriteString(fmt.Sprintf("%s%s {\n", indent, declStyle.Render("FunDecl")))
+	builder.WriteString(fmt.Sprintf("%s  %s: %s\n", indent, fieldStyle.Render("Name"), identStyle.Render(decl.Name)))
+	builder.WriteString(fmt.Sprintf("%s  %s: %s\n", indent, fieldStyle.Render("Type"), identStyle.Render(decl.Type)))
+	builder.WriteString(fmt.Sprintf("%s  %s: [\n", indent, fieldStyle.Render("Params")))
 
 	for _, param := range decl.Params {
-		builder.WriteString(fmt.Sprintf("%s    Param { Name: %s, Type: %s }\n",
-			indent, param.Name, param.Type))
+		builder.WriteString(fmt.Sprintf("%s    %s { %s: %s, %s: %s }\n",
+			indent, keywordStyle.Render("Param"),
+			fieldStyle.Render("Name"), identStyle.Render(param.Name),
+			fieldStyle.Render("Type"), identStyle.Render(param.Type)))
 	}
 
 	builder.WriteString(fmt.Sprintf("%s  ]\n", indent))
-	builder.WriteString(fmt.Sprintf("%s  Body: %s", indent, printStmt(decl.Body, indent+"  ")))
+	builder.WriteString(fmt.Sprintf("%s  %s: %s", indent, fieldStyle.Render("Body"), printStmt(decl.Body, indent+"  ")))
 	builder.WriteString(fmt.Sprintf("%s}\n", indent))
 
 	return builder.String()
@@ -236,11 +252,19 @@ func printCallExpr(expr *CallExpr, indent string) string {
 }
 
 func printIdent(expr *Ident, indent string) string {
-	return fmt.Sprintf("Ident { Name: %s }\n", expr.Name)
+	return fmt.Sprintf("%s { %s: %s }\n",
+		exprStyle.Render("Ident"),
+		fieldStyle.Render("Name"),
+		identStyle.Render(expr.Name))
 }
 
 func printBasicLit(expr *BasicLit, indent string) string {
-	return fmt.Sprintf("BasicLit { Kind: %s, Value: %s }\n", expr.Kind, expr.Value)
+	return fmt.Sprintf("%s { %s: %s, %s: %s }\n",
+		exprStyle.Render("BasicLit"),
+		fieldStyle.Render("Kind"),
+		keywordStyle.Render(string(expr.Kind)),
+		fieldStyle.Render("Value"),
+		literalStyle.Render(expr.Value))
 }
 
 func printArrayLit(expr *ArrayLit, indent string) string {

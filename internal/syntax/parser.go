@@ -9,6 +9,7 @@ type Parser struct {
 	curToken    Token
 	peekToken   Token
 	diagnostics []diag.Diagnostic
+	hasError    bool
 }
 
 // ParseFile parses a Guayavita source file and returns the AST and any diagnostics
@@ -58,6 +59,7 @@ func (p *Parser) error(msg string) {
 		},
 	}
 	p.diagnostics = append(p.diagnostics, diagnostic)
+	p.hasError = true
 }
 
 func (p *Parser) expectToken(expected TokenKind) bool {
@@ -84,7 +86,7 @@ func (p *Parser) parseFile() *File {
 	}
 
 	// Parse declarations
-	for p.curToken.Kind != EOF {
+	for p.curToken.Kind != EOF && !p.hasError {
 		decl := p.parseDecl()
 		if decl != nil {
 			file.Decls = append(file.Decls, decl)
@@ -242,7 +244,7 @@ func (p *Parser) parseBlock() *Block {
 	p.nextToken() // consume '{'
 
 	stmts := []Stmt{}
-	for p.curToken.Kind != RBRACE && p.curToken.Kind != EOF {
+	for p.curToken.Kind != RBRACE && p.curToken.Kind != EOF && !p.hasError {
 		stmt := p.parseStmt()
 		if stmt != nil {
 			stmts = append(stmts, stmt)
@@ -495,7 +497,7 @@ func (p *Parser) parsePostfixExpr() Expr {
 			p.nextToken() // consume '('
 			args := []Expr{}
 
-			for p.curToken.Kind != RPAREN && p.curToken.Kind != EOF {
+			for p.curToken.Kind != RPAREN && p.curToken.Kind != EOF && !p.hasError {
 				arg := p.parseExpr()
 				args = append(args, arg)
 
@@ -584,7 +586,7 @@ func (p *Parser) parseArrayLit() *ArrayLit {
 	p.nextToken() // consume '['
 
 	elements := []Expr{}
-	for p.curToken.Kind != RBRACKET && p.curToken.Kind != EOF {
+	for p.curToken.Kind != RBRACKET && p.curToken.Kind != EOF && !p.hasError {
 		elem := p.parseExpr()
 		elements = append(elements, elem)
 
