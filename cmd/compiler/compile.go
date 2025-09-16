@@ -1,9 +1,6 @@
 package compiler
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"jmpeax.com/guayavita/gvc/internal/fs"
@@ -27,20 +24,22 @@ var compileCmd = &cobra.Command{
 			log.Errorf("Error reading file: %s", err)
 			return
 		}
-		lx := syntax.NewLexerFromString(content)
-		ps := syntax.NewParser(lx)
-		gvcAst, err := ps.ParseFile()
-		if err != nil {
-			var pe *syntax.ParseError
-			if errors.As(err, &pe) {
-				d := pe.Diagnostic(file)
-				fmt.Println(d.Render(content))
-				return
+		// Parse the source
+		parsedFile, diagnostics := syntax.ParseFile(file, content)
+
+		// Print diagnostics if any
+		if len(diagnostics) > 0 {
+			log.Error("Parsing errors found:")
+			for _, diag := range diagnostics {
+				log.Error(diag.Render(content))
 			}
-			log.Errorf("parse failed: %v", err)
-			return
+		} else {
+			log.Info("Parsing completed successfully")
 		}
-		log.Debugf("Package name: %s , package Variables %v", gvcAst.Package.Name, gvcAst.Definitions)
+
+		// Pretty-print the AST
+		log.Debugf("AST:\n%s", syntax.PrintFile(parsedFile))
+
 	},
 }
 

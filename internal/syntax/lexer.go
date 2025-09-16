@@ -1,580 +1,422 @@
 package syntax
 
 import (
-	"bufio"
-	"io"
+	"strconv"
 	"strings"
-	"unicode"
+
+	"jmpeax.com/guayavita/gvc/internal/diag"
 )
 
-// TokenType represents the kinds of tokens our lexer can produce.
-type TokenType int
+type TokenKind string
 
 const (
-	// Special
-	EOF TokenType = iota
-	ILLEGAL
+	// Special tokens
+	ILLEGAL TokenKind = "ILLEGAL"
+	EOF     TokenKind = "EOF"
+
+	// Identifiers and literals
+	IDENT  TokenKind = "IDENT"
+	INT    TokenKind = "INT"
+	FLOAT  TokenKind = "FLOAT"
+	STRING TokenKind = "STRING"
+	TRUE   TokenKind = "TRUE"
+	FALSE  TokenKind = "FALSE"
+	NONE   TokenKind = "NONE"
 
 	// Keywords
-	PACKAGE
-	IMPORT
-	EXPORT
-	DEF
-	TYPE
-	STRUCT
-	ENUM
-	IMPL
-	FUN
-	RETURN
-	IF
-	ELSE
-	WHILE
-	FOR
-	IN
-	HANDLE
-	OK
-	ERR
-	AS
-	TRUE
-	FALSE
+	PACKAGE TokenKind = "PACKAGE"
+	IMPORT  TokenKind = "IMPORT"
+	DEF     TokenKind = "DEF"
+	FUN     TokenKind = "FUN"
+	TYPE    TokenKind = "TYPE"
+	EXPORT  TokenKind = "EXPORT"
+	RETURN  TokenKind = "RETURN"
+	IF      TokenKind = "IF"
+	ELSE    TokenKind = "ELSE"
+	WHILE   TokenKind = "WHILE"
+	FOR     TokenKind = "FOR"
+	IN      TokenKind = "IN"
+	HANDLE  TokenKind = "HANDLE"
+	OK      TokenKind = "OK"
+	ERR     TokenKind = "ERR"
+	STRUCT  TokenKind = "STRUCT"
+	ENUM    TokenKind = "ENUM"
+	IMPL    TokenKind = "IMPL"
+	AS      TokenKind = "AS"
 
-	// Identifiers
-	IDENT
+	// Operators
+	ASSIGN TokenKind = "="
+	EQ     TokenKind = "=="
+	NE     TokenKind = "!="
+	LT     TokenKind = "<"
+	LE     TokenKind = "<="
+	GT     TokenKind = ">"
+	GE     TokenKind = ">="
+	PLUS   TokenKind = "+"
+	MINUS  TokenKind = "-"
+	MUL    TokenKind = "*"
+	DIV    TokenKind = "/"
+	MOD    TokenKind = "%"
+	AND    TokenKind = "&&"
+	OR     TokenKind = "||"
+	NOT    TokenKind = "!"
 
-	// Literals
-	NUMBER
-	STRING
+	// Punctuation
+	COMMA     TokenKind = ","
+	SEMICOLON TokenKind = ";"
+	COLON     TokenKind = ":"
+	DOT       TokenKind = "."
+	ARROW     TokenKind = "->"
+	QUESTION  TokenKind = "?"
 
-	// Symbols / punctuation
-	ASSIGN    // '='
-	PIPE      // '|'
-	LPAREN    // '('
-	RPAREN    // ')'
-	LBRACE    // '{'
-	RBRACE    // '}'
-	LBRACKET  // '['
-	RBRACKET  // ']'
-	LANGLE    // '<'
-	RANGLE    // '>'
-	COLON     // ':'
-	SEMICOLON // ';'
-	COMMA     // ','
-	DOT       // '.'
-	QUESTION  // '?'
-	BANG      // '!'
-	PLUS      // '+'
-	MINUS     // '-'
-	STAR      // '*'
-	SLASH     // '/'
-	EQEQ      // '=='
-	NEQ       // '!='
-	LTE       // '<='
-	GTE       // '>='
-	OROR      // '||'
-	ANDAND    // '&&'
-	PERCENT   // '%'
+	// Delimiters
+	LPAREN   TokenKind = "("
+	RPAREN   TokenKind = ")"
+	LBRACE   TokenKind = "{"
+	RBRACE   TokenKind = "}"
+	LBRACKET TokenKind = "["
+	RBRACKET TokenKind = "]"
 )
 
-func (t TokenType) String() string {
-	switch t {
-	case EOF:
-		return "EOF"
-	case ILLEGAL:
-		return "ILLEGAL"
-	case PACKAGE:
-		return "PACKAGE"
-	case IMPORT:
-		return "IMPORT"
-	case EXPORT:
-		return "EXPORT"
-	case DEF:
-		return "DEF"
-	case TYPE:
-		return "TYPE"
-	case STRUCT:
-		return "STRUCT"
-	case ENUM:
-		return "ENUM"
-	case IMPL:
-		return "IMPL"
-	case FUN:
-		return "FUN"
-	case RETURN:
-		return "RETURN"
-	case IF:
-		return "IF"
-	case ELSE:
-		return "ELSE"
-	case WHILE:
-		return "WHILE"
-	case FOR:
-		return "FOR"
-	case IN:
-		return "IN"
-	case HANDLE:
-		return "HANDLE"
-	case OK:
-		return "OK"
-	case ERR:
-		return "ERR"
-	case AS:
-		return "AS"
-	case TRUE:
-		return "TRUE"
-	case FALSE:
-		return "FALSE"
-	case IDENT:
-		return "IDENT"
-	case NUMBER:
-		return "NUMBER"
-	case STRING:
-		return "STRING"
-	case ASSIGN:
-		return "ASSIGN"
-	case PIPE:
-		return "PIPE"
-	case LPAREN:
-		return "LPAREN"
-	case RPAREN:
-		return "RPAREN"
-	case LBRACE:
-		return "LBRACE"
-	case RBRACE:
-		return "RBRACE"
-	case LBRACKET:
-		return "LBRACKET"
-	case RBRACKET:
-		return "RBRACKET"
-	case LANGLE:
-		return "LANGLE"
-	case RANGLE:
-		return "RANGLE"
-	case COLON:
-		return "COLON"
-	case SEMICOLON:
-		return "SEMICOLON"
-	case COMMA:
-		return "COMMA"
-	case DOT:
-		return "DOT"
-	case QUESTION:
-		return "QUESTION"
-	case BANG:
-		return "BANG"
-	case PLUS:
-		return "PLUS"
-	case MINUS:
-		return "MINUS"
-	case STAR:
-		return "STAR"
-	case SLASH:
-		return "SLASH"
-	case EQEQ:
-		return "EQEQ"
-	case NEQ:
-		return "NEQ"
-	case LTE:
-		return "LTE"
-	case GTE:
-		return "GTE"
-	case OROR:
-		return "OROR"
-	case ANDAND:
-		return "ANDAND"
-	case PERCENT:
-		return "PERCENT"
-	default:
-		// Minimal itoa to avoid importing fmt
-		return "TokenType(" + itoa(int(t)) + ")"
-	}
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	neg := false
-	if i < 0 {
-		neg = true
-		i = -i
-	}
-	var buf [20]byte
-	b := len(buf)
-	for i > 0 {
-		b--
-		buf[b] = byte('0' + i%10)
-		i /= 10
-	}
-	if neg {
-		b--
-		buf[b] = '-'
-	}
-	return string(buf[b:])
-}
-
 type Token struct {
-	Type TokenType
-	Lit  string
-	Pos  Pos
+	Kind  TokenKind
+	Value string
+	Pos   diag.Position
 }
 
-// Lexer implements a simple rune-based lexer for the grammar: "package NAME".
+var keywords = map[string]TokenKind{
+	"package": PACKAGE,
+	"import":  IMPORT,
+	"def":     DEF,
+	"fun":     FUN,
+	"type":    TYPE,
+	"export":  EXPORT,
+	"return":  RETURN,
+	"if":      IF,
+	"else":    ELSE,
+	"while":   WHILE,
+	"for":     FOR,
+	"in":      IN,
+	"handle":  HANDLE,
+	"Ok":      OK,
+	"Err":     ERR,
+	"struct":  STRUCT,
+	"enum":    ENUM,
+	"impl":    IMPL,
+	"as":      AS,
+	"true":    TRUE,
+	"false":   FALSE,
+	"none":    NONE,
+}
+
 type Lexer struct {
-	r      *bufio.Reader
-	offset int
-	line   int
-	col    int
-
-	peekedRune rune
-	peekedSize int
-	hasPeeked  bool
+	input    string
+	filename string
+	pos      int  // current position in input (points to current char)
+	readPos  int  // current reading position in input (after current char)
+	ch       byte // current char under examination
+	line     int
+	column   int
 }
 
-func NewLexerFromString(s string) *Lexer {
-	return NewLexer(strings.NewReader(s))
+func NewLexer(input, filename string) *Lexer {
+	l := &Lexer{
+		input:    input,
+		filename: filename,
+		line:     1,
+		column:   0,
+	}
+	l.readChar()
+	return l
 }
 
-func NewLexer(r io.Reader) *Lexer {
-	return &Lexer{
-		r:    bufio.NewReader(r),
-		line: 1,
-		col:  0,
-	}
-}
-
-func (lx *Lexer) readRune() (r rune, size int, err error) {
-	if lx.hasPeeked {
-		r, size = lx.peekedRune, lx.peekedSize
-		lx.hasPeeked = false
-		return r, size, nil
-	}
-	r, size, err = lx.r.ReadRune()
-	if err != nil {
-		return 0, 0, err
-	}
-	lx.offset += size
-	if r == '\n' {
-		lx.line++
-		lx.col = 0
+func (l *Lexer) readChar() {
+	if l.readPos >= len(l.input) {
+		l.ch = 0 // ASCII NUL character represents "EOF"
 	} else {
-		lx.col++
+		l.ch = l.input[l.readPos]
 	}
-	return r, size, nil
-}
-
-func (lx *Lexer) unreadRune(r rune, size int) {
-	if lx.hasPeeked {
-		panic("internal lexer error: double unread")
-	}
-	lx.peekedRune = r
-	lx.peekedSize = size
-	lx.hasPeeked = true
-
-	lx.offset -= size
-	if r == '\n' {
-		lx.line--
-		lx.col = 0
-	} else if lx.col > 0 {
-		lx.col--
+	l.pos = l.readPos
+	l.readPos++
+	if l.ch == '\n' {
+		l.line++
+		l.column = 0
+	} else {
+		l.column++
 	}
 }
 
-func (lx *Lexer) skipWhitespaceAndComments() error {
-	for {
-		r, size, err := lx.readRune()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		// Skip whitespace only; comments are handled in NextToken to avoid double unread
-		if unicode.IsSpace(r) {
-			continue
-		}
-		// Non-whitespace: unread it and return for tokenization
-		lx.unreadRune(r, size)
-		return nil
+func (l *Lexer) peekChar() byte {
+	if l.readPos >= len(l.input) {
+		return 0
+	}
+	return l.input[l.readPos]
+}
+
+func (l *Lexer) currentPos() diag.Position {
+	return diag.Position{
+		File:   l.filename,
+		Line:   l.line,
+		Column: l.column,
 	}
 }
 
-func (lx *Lexer) NextToken() (Token, error) {
-	_ = lx.skipWhitespaceAndComments() // best effort; errors surface while reading runes
+func (l *Lexer) NextToken() Token {
+	var tok Token
 
-	startPos := Pos{Offset: lx.offset, Line: lx.line, Col: lx.col + 1}
+	l.skipWhitespace()
+	l.skipComments()
 
-	r, _, err := lx.readRune()
-	if err == io.EOF {
-		return Token{Type: EOF, Pos: startPos}, nil
-	}
-	if err != nil {
-		return Token{}, err
-	}
+	tok.Pos = l.currentPos()
 
-	// Handle line comments if present: // ...
-	if r == '/' {
-		r2, size2, err2 := lx.readRune()
-		if err2 == nil && r2 == '/' {
-			// consume until end of line, then get next token
-			for {
-				r3, _, err3 := lx.readRune()
-				if err3 != nil {
-					// EOF or other error ends comment; treat as EOF if EOF
-					if err3 == io.EOF {
-						return Token{Type: EOF, Pos: startPos}, nil
-					}
-					return Token{}, err3
-				}
-				if r3 == '\n' {
-					break
-				}
-			}
-			// After skipping comment, recurse to fetch next token
-			return lx.NextToken()
-		}
-		if err2 == nil {
-			lx.unreadRune(r2, size2)
-		}
-	}
-
-	// Number literals (allow underscores between digits) and optional fractional part
-	if unicode.IsDigit(r) {
-		var sb strings.Builder
-		sb.WriteRune(r)
-		seenDot := false
-		for {
-			r2, size2, err2 := lx.readRune()
-			if err2 != nil {
-				if err2 == io.EOF {
-					break
-				}
-				return Token{}, err2
-			}
-			if unicode.IsDigit(r2) || r2 == '_' {
-				sb.WriteRune(r2)
-				continue
-			}
-			if r2 == '.' && !seenDot {
-				// ensure there's at least one digit after the dot
-				r3, size3, err3 := lx.readRune()
-				if err3 == nil && unicode.IsDigit(r3) {
-					sb.WriteRune('.')
-					sb.WriteRune(r3)
-					seenDot = true
-					continue
-				}
-				// not a fractional part; unread r3 (if any) and the '.' then stop number
-				if err3 == nil {
-					lx.unreadRune(r3, size3)
-				}
-				lx.unreadRune(r2, size2)
-				break
-			}
-			// Not part of number
-			if !unicode.IsSpace(r2) {
-				lx.unreadRune(r2, size2)
-			}
-			break
-		}
-		lit := sb.String()
-		return Token{Type: NUMBER, Lit: lit, Pos: startPos}, nil
-	}
-
-	// Strings
-	if r == '"' {
-		var sb strings.Builder
-		for {
-			r2, _, err2 := lx.readRune()
-			if err2 != nil {
-				if err2 == io.EOF {
-					return Token{Type: ILLEGAL, Lit: "unterminated string", Pos: startPos}, nil
-				}
-				return Token{}, err2
-			}
-			if r2 == '"' {
-				break
-			}
-			sb.WriteRune(r2)
-		}
-		return Token{Type: STRING, Lit: sb.String(), Pos: startPos}, nil
-	}
-
-	// Symbols and operators (including multi-char)
-	switch r {
+	switch l.ch {
 	case '=':
-		// check '=='
-		r2, size2, err2 := lx.readRune()
-		if err2 == nil && r2 == '=' {
-			return Token{Type: EQEQ, Lit: "==", Pos: startPos}, nil
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok = Token{Kind: EQ, Value: "==", Pos: tok.Pos}
+		} else {
+			tok = Token{Kind: ASSIGN, Value: string(l.ch), Pos: tok.Pos}
 		}
-		if err2 == nil {
-			lx.unreadRune(r2, size2)
-		}
-		return Token{Type: ASSIGN, Lit: "=", Pos: startPos}, nil
 	case '!':
-		// check '!='
-		r2, size2, err2 := lx.readRune()
-		if err2 == nil && r2 == '=' {
-			return Token{Type: NEQ, Lit: "!=", Pos: startPos}, nil
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok = Token{Kind: NE, Value: "!=", Pos: tok.Pos}
+		} else {
+			tok = Token{Kind: NOT, Value: string(l.ch), Pos: tok.Pos}
 		}
-		if err2 == nil {
-			lx.unreadRune(r2, size2)
-		}
-		return Token{Type: BANG, Lit: "!", Pos: startPos}, nil
 	case '<':
-		// check '<='
-		r2, size2, err2 := lx.readRune()
-		if err2 == nil && r2 == '=' {
-			return Token{Type: LTE, Lit: "<=", Pos: startPos}, nil
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok = Token{Kind: LE, Value: "<=", Pos: tok.Pos}
+		} else {
+			tok = Token{Kind: LT, Value: string(l.ch), Pos: tok.Pos}
 		}
-		if err2 == nil {
-			lx.unreadRune(r2, size2)
-		}
-		return Token{Type: LANGLE, Lit: "<", Pos: startPos}, nil
 	case '>':
-		// check '>='
-		r2, size2, err2 := lx.readRune()
-		if err2 == nil && r2 == '=' {
-			return Token{Type: GTE, Lit: ">=", Pos: startPos}, nil
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok = Token{Kind: GE, Value: ">=", Pos: tok.Pos}
+		} else {
+			tok = Token{Kind: GT, Value: string(l.ch), Pos: tok.Pos}
 		}
-		if err2 == nil {
-			lx.unreadRune(r2, size2)
-		}
-		return Token{Type: RANGLE, Lit: ">", Pos: startPos}, nil
-	case '|':
-		// check '||'
-		r2, size2, err2 := lx.readRune()
-		if err2 == nil && r2 == '|' {
-			return Token{Type: OROR, Lit: "||", Pos: startPos}, nil
-		}
-		if err2 == nil {
-			lx.unreadRune(r2, size2)
-		}
-		return Token{Type: PIPE, Lit: "|", Pos: startPos}, nil
 	case '&':
-		// '&&' only; single '&' is illegal in this grammar
-		r2, size2, err2 := lx.readRune()
-		if err2 == nil && r2 == '&' {
-			return Token{Type: ANDAND, Lit: "&&", Pos: startPos}, nil
+		if l.peekChar() == '&' {
+			l.readChar()
+			tok = Token{Kind: AND, Value: "&&", Pos: tok.Pos}
+		} else {
+			tok = Token{Kind: ILLEGAL, Value: string(l.ch), Pos: tok.Pos}
 		}
-		if err2 == nil {
-			lx.unreadRune(r2, size2)
+	case '|':
+		if l.peekChar() == '|' {
+			l.readChar()
+			tok = Token{Kind: OR, Value: "||", Pos: tok.Pos}
+		} else {
+			tok = Token{Kind: ILLEGAL, Value: string(l.ch), Pos: tok.Pos}
 		}
-		return Token{Type: ILLEGAL, Lit: "&", Pos: startPos}, nil
-	case '(':
-		return Token{Type: LPAREN, Lit: "(", Pos: startPos}, nil
-	case ')':
-		return Token{Type: RPAREN, Lit: ")", Pos: startPos}, nil
-	case '{':
-		return Token{Type: LBRACE, Lit: "{", Pos: startPos}, nil
-	case '}':
-		return Token{Type: RBRACE, Lit: "}", Pos: startPos}, nil
-	case '[':
-		return Token{Type: LBRACKET, Lit: "[", Pos: startPos}, nil
-	case ']':
-		return Token{Type: RBRACKET, Lit: "]", Pos: startPos}, nil
-	case ',':
-		return Token{Type: COMMA, Lit: ",", Pos: startPos}, nil
-	case '.':
-		return Token{Type: DOT, Lit: ".", Pos: startPos}, nil
-	case ':':
-		return Token{Type: COLON, Lit: ":", Pos: startPos}, nil
-	case ';':
-		return Token{Type: SEMICOLON, Lit: ";", Pos: startPos}, nil
-	case '?':
-		return Token{Type: QUESTION, Lit: "?", Pos: startPos}, nil
-	case '+':
-		return Token{Type: PLUS, Lit: "+", Pos: startPos}, nil
 	case '-':
-		return Token{Type: MINUS, Lit: "-", Pos: startPos}, nil
+		if l.peekChar() == '>' {
+			l.readChar()
+			tok = Token{Kind: ARROW, Value: "->", Pos: tok.Pos}
+		} else {
+			tok = Token{Kind: MINUS, Value: string(l.ch), Pos: tok.Pos}
+		}
+	case '+':
+		tok = Token{Kind: PLUS, Value: string(l.ch), Pos: tok.Pos}
 	case '*':
-		return Token{Type: STAR, Lit: "*", Pos: startPos}, nil
-	case '%':
-		return Token{Type: PERCENT, Lit: "%", Pos: startPos}, nil
+		tok = Token{Kind: MUL, Value: string(l.ch), Pos: tok.Pos}
 	case '/':
-		return Token{Type: SLASH, Lit: "/", Pos: startPos}, nil
+		tok = Token{Kind: DIV, Value: string(l.ch), Pos: tok.Pos}
+	case '%':
+		tok = Token{Kind: MOD, Value: string(l.ch), Pos: tok.Pos}
+	case ',':
+		tok = Token{Kind: COMMA, Value: string(l.ch), Pos: tok.Pos}
+	case ';':
+		tok = Token{Kind: SEMICOLON, Value: string(l.ch), Pos: tok.Pos}
+	case ':':
+		tok = Token{Kind: COLON, Value: string(l.ch), Pos: tok.Pos}
+	case '.':
+		tok = Token{Kind: DOT, Value: string(l.ch), Pos: tok.Pos}
+	case '?':
+		tok = Token{Kind: QUESTION, Value: string(l.ch), Pos: tok.Pos}
+	case '(':
+		tok = Token{Kind: LPAREN, Value: string(l.ch), Pos: tok.Pos}
+	case ')':
+		tok = Token{Kind: RPAREN, Value: string(l.ch), Pos: tok.Pos}
+	case '{':
+		tok = Token{Kind: LBRACE, Value: string(l.ch), Pos: tok.Pos}
+	case '}':
+		tok = Token{Kind: RBRACE, Value: string(l.ch), Pos: tok.Pos}
+	case '[':
+		tok = Token{Kind: LBRACKET, Value: string(l.ch), Pos: tok.Pos}
+	case ']':
+		tok = Token{Kind: RBRACKET, Value: string(l.ch), Pos: tok.Pos}
+	case '"':
+		tok.Value = l.readString()
+		tok.Kind = STRING
+		return tok // readString() advances position
+	case 0:
+		tok = Token{Kind: EOF, Value: "", Pos: tok.Pos}
+	default:
+		if isLetter(l.ch) {
+			tok.Value = l.readIdentifier()
+			tok.Kind = lookupIdent(tok.Value)
+			return tok // readIdentifier() advances position
+		} else if isDigit(l.ch) {
+			tok.Value = l.readNumber()
+			if strings.Contains(tok.Value, ".") {
+				tok.Kind = FLOAT
+			} else {
+				tok.Kind = INT
+			}
+			return tok // readNumber() advances position
+		} else {
+			tok = Token{Kind: ILLEGAL, Value: string(l.ch), Pos: tok.Pos}
+		}
 	}
 
-	// Identifiers or keywords
-	if isIdentStart(r) {
-		var sb strings.Builder
-		sb.WriteRune(r)
-		for {
-			r2, size2, err2 := lx.readRune()
-			if err2 != nil {
-				if err2 == io.EOF {
+	l.readChar()
+	return tok
+}
+
+func (l *Lexer) skipWhitespace() {
+	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+		l.readChar()
+	}
+}
+
+func (l *Lexer) skipComments() {
+	if l.ch == '/' {
+		if l.peekChar() == '/' {
+			// Line comment
+			for l.ch != '\n' && l.ch != 0 {
+				l.readChar()
+			}
+			l.skipWhitespace()
+		} else if l.peekChar() == '*' {
+			// Block comment
+			l.readChar() // consume '/'
+			l.readChar() // consume '*'
+			for {
+				if l.ch == '*' && l.peekChar() == '/' {
+					l.readChar() // consume '*'
+					l.readChar() // consume '/'
 					break
 				}
-				return Token{}, err2
-			}
-			if !isIdentPart(r2) {
-				if !unicode.IsSpace(r2) {
-					lx.unreadRune(r2, size2)
+				if l.ch == 0 {
+					break // EOF in comment
 				}
-				break
+				l.readChar()
 			}
-			sb.WriteRune(r2)
+			l.skipWhitespace()
 		}
-		lit := sb.String()
-		switch lit {
-		case "package":
-			return Token{Type: PACKAGE, Lit: lit, Pos: startPos}, nil
-		case "import":
-			return Token{Type: IMPORT, Lit: lit, Pos: startPos}, nil
-		case "export":
-			return Token{Type: EXPORT, Lit: lit, Pos: startPos}, nil
-		case "def":
-			return Token{Type: DEF, Lit: lit, Pos: startPos}, nil
-		case "type":
-			return Token{Type: TYPE, Lit: lit, Pos: startPos}, nil
-		case "struct":
-			return Token{Type: STRUCT, Lit: lit, Pos: startPos}, nil
-		case "enum":
-			return Token{Type: ENUM, Lit: lit, Pos: startPos}, nil
-		case "impl":
-			return Token{Type: IMPL, Lit: lit, Pos: startPos}, nil
-		case "fun":
-			return Token{Type: FUN, Lit: lit, Pos: startPos}, nil
-		case "return":
-			return Token{Type: RETURN, Lit: lit, Pos: startPos}, nil
-		case "if":
-			return Token{Type: IF, Lit: lit, Pos: startPos}, nil
-		case "else":
-			return Token{Type: ELSE, Lit: lit, Pos: startPos}, nil
-		case "while":
-			return Token{Type: WHILE, Lit: lit, Pos: startPos}, nil
-		case "for":
-			return Token{Type: FOR, Lit: lit, Pos: startPos}, nil
-		case "in":
-			return Token{Type: IN, Lit: lit, Pos: startPos}, nil
-		case "handle":
-			return Token{Type: HANDLE, Lit: lit, Pos: startPos}, nil
-		case "Ok":
-			return Token{Type: OK, Lit: lit, Pos: startPos}, nil
-		case "Err":
-			return Token{Type: ERR, Lit: lit, Pos: startPos}, nil
-		case "as":
-			return Token{Type: AS, Lit: lit, Pos: startPos}, nil
-		case "true":
-			return Token{Type: TRUE, Lit: lit, Pos: startPos}, nil
-		case "false":
-			return Token{Type: FALSE, Lit: lit, Pos: startPos}, nil
-		}
-		return Token{Type: IDENT, Lit: lit, Pos: startPos}, nil
+	}
+}
+
+func (l *Lexer) readIdentifier() string {
+	position := l.pos
+	for isLetter(l.ch) || isDigit(l.ch) || l.ch == '_' {
+		l.readChar()
+	}
+	return l.input[position:l.pos]
+}
+
+func (l *Lexer) readNumber() string {
+	position := l.pos
+	for isDigit(l.ch) {
+		l.readChar()
 	}
 
-	// Unknown single rune => ILLEGAL
-	return Token{
-		Type: ILLEGAL,
-		Lit:  string(r),
-		Pos:  startPos,
-	}, nil
+	// Handle float
+	if l.ch == '.' && isDigit(l.peekChar()) {
+		l.readChar() // consume '.'
+		for isDigit(l.ch) {
+			l.readChar()
+		}
+	}
+
+	return l.input[position:l.pos]
 }
 
-func isIdentStart(r rune) bool {
-	return r == '_' || unicode.IsLetter(r)
+func (l *Lexer) readString() string {
+	l.readChar() // move past opening quote
+
+	var result strings.Builder
+	for l.ch != '"' && l.ch != 0 {
+		if l.ch == '\\' {
+			l.readChar()
+			switch l.ch {
+			case 'n':
+				result.WriteByte('\n')
+			case 't':
+				result.WriteByte('\t')
+			case 'r':
+				result.WriteByte('\r')
+			case '"':
+				result.WriteByte('"')
+			case '\\':
+				result.WriteByte('\\')
+			case 'u':
+				// Unicode escape \uXXXX
+				l.readChar()
+				hex := l.readHex(4)
+				if code, err := strconv.ParseUint(hex, 16, 16); err == nil {
+					result.WriteRune(rune(code))
+				}
+				continue // readHex already advanced position
+			case 'U':
+				// Unicode escape \UXXXXXXXX
+				l.readChar()
+				hex := l.readHex(8)
+				if code, err := strconv.ParseUint(hex, 16, 32); err == nil {
+					result.WriteRune(rune(code))
+				}
+				continue // readHex already advanced position
+			case 'x':
+				// Hex escape \xXX
+				l.readChar()
+				hex := l.readHex(2)
+				if code, err := strconv.ParseUint(hex, 16, 8); err == nil {
+					result.WriteByte(byte(code))
+				}
+				continue // readHex already advanced position
+			default:
+				result.WriteByte(l.ch)
+			}
+		} else {
+			result.WriteByte(l.ch)
+		}
+		l.readChar()
+	}
+
+	if l.ch == '"' {
+		l.readChar() // consume closing quote
+	}
+
+	return result.String()
 }
 
-func isIdentPart(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+func (l *Lexer) readHex(count int) string {
+	position := l.pos
+	for i := 0; i < count && isHexDigit(l.ch); i++ {
+		l.readChar()
+	}
+	return l.input[position:l.pos]
+}
+
+func isLetter(ch byte) bool {
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z'
+}
+
+func isDigit(ch byte) bool {
+	return '0' <= ch && ch <= '9'
+}
+
+func isHexDigit(ch byte) bool {
+	return isDigit(ch) || 'a' <= ch && ch <= 'f' || 'A' <= ch && ch <= 'F'
+}
+
+func lookupIdent(ident string) TokenKind {
+	if tok, ok := keywords[ident]; ok {
+		return tok
+	}
+	return IDENT
 }

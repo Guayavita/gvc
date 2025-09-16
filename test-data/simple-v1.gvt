@@ -1,0 +1,17 @@
+package test
+
+fun add(a, b) {
+    let result = a + b
+    result
+}
+
+let x = 42
+let y = "hello world"
+let flag = true
+
+fun main() {
+    let sum = add(x, 10)
+    let message = "Sum is: "
+    print(message)
+    print(sum)
+}

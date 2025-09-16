@@ -1,389 +1,608 @@
 package syntax
 
 import (
-	"fmt"
-
 	"jmpeax.com/guayavita/gvc/internal/diag"
 )
 
-type ParseError struct {
-	Msg string
-	Pos Pos
-}
-
-func (e *ParseError) Error() string {
-	if e.Pos.Line > 0 {
-		return fmt.Sprintf("parse error at %d:%d: %s", e.Pos.Line, e.Pos.Col, e.Msg)
-	}
-	return "parse error: " + e.Msg
-}
-
-// Diagnostic converts a ParseError into a diag.Diagnostic for pretty printing.
-func (e *ParseError) Diagnostic(file string) diag.Diagnostic {
-	start := diag.Position{File: file, Line: e.Pos.Line, Column: e.Pos.Col}
-	return diag.Diagnostic{
-		Severity: diag.Error,
-		Message:  e.Msg,
-		Span:     diag.Span{Start: start, End: start},
-	}
-}
-
 type Parser struct {
-	lex   *Lexer
-	peek  *Token
-	peekE error
+	lexer       *Lexer
+	curToken    Token
+	peekToken   Token
+	diagnostics []diag.Diagnostic
 }
 
-func NewParser(lx *Lexer) *Parser {
-	return &Parser{lex: lx}
+// ParseFile parses a Guayavita source file and returns the AST and any diagnostics
+func ParseFile(filename, source string) (*File, []diag.Diagnostic) {
+	lexer := NewLexer(source, filename)
+	parser := &Parser{
+		lexer:       lexer,
+		diagnostics: []diag.Diagnostic{},
+	}
+
+	// Read two tokens to initialize current and peek
+	parser.nextToken()
+	parser.nextToken()
+
+	file := parser.parseFile()
+	return file, parser.diagnostics
 }
 
-func (p *Parser) next() (Token, error) {
-	if p.peek != nil {
-		tok := *p.peek
-		err := p.peekE
-		p.peek = nil
-		p.peekE = nil
-		return tok, err
-	}
-	return p.lex.NextToken()
+func (p *Parser) nextToken() {
+	p.curToken = p.peekToken
+	p.peekToken = p.lexer.NextToken()
 }
 
-func (p *Parser) peekTok() (Token, error) {
-	if p.peek != nil {
-		return *p.peek, p.peekE
-	}
-	tok, err := p.lex.NextToken()
-	p.peek = &tok
-	p.peekE = err
-	return tok, err
-}
-
-func (p *Parser) expect(tt TokenType) (Token, error) {
-	tok, err := p.next()
-	if err != nil {
-		return tok, err
-	}
-	if tok.Type != tt {
-		return tok, &ParseError{
-			Msg: fmt.Sprintf("expected %s, got %s (%q)", tt, tok.Type, tok.Lit),
-			Pos: tok.Pos,
-		}
-	}
-	return tok, nil
-}
-
-// ParsePackage parses the input according to the grammar:
-//
-//	PackageDecl -> "package" IDENT EOF
-func (p *Parser) ParsePackage() (*PackageDecl, error) {
-	tPkg, err := p.expect(PACKAGE)
-	if err != nil {
-		return nil, err
-	}
-	tName, err := p.expect(IDENT)
-	if err != nil {
-		return nil, err
-	}
-
-	// Require EOF (lexer tolerates trailing spaces/comments)
-	t, err := p.next()
-	if err != nil {
-		return nil, err
-	}
-	if t.Type != EOF {
-		return nil, &ParseError{
-			Msg: fmt.Sprintf("unexpected token after package declaration: %s (%q)", t.Type, t.Lit),
-			Pos: t.Pos,
-		}
-	}
-
-	return &PackageDecl{
-		Name: tName.Lit,
-		Pos:  tPkg.Pos,
-	}, nil
-}
-
-// ParseFile parses an optional package declaration followed by zero or more definitions until EOF.
-func (p *Parser) ParseFile() (*File, error) {
-	return p.parseFileInline()
-}
-
-func (p *Parser) parseFileInline() (*File, error) {
-	f := &File{}
-	// Inline optional package parsing without requiring EOF
-	tok, err := p.peekTok()
-	if err != nil {
-		return nil, err
-	}
-	if tok.Type == PACKAGE {
-		// consume 'package' and IDENT
-		tPkg, err := p.expect(PACKAGE)
-		if err != nil {
-			return nil, err
-		}
-		tName, err := p.expect(IDENT)
-		if err != nil {
-			return nil, err
-		}
-		f.Package = &PackageDecl{Name: tName.Lit, Pos: tPkg.Pos}
-	}
-	// Now parse zero or more definitions until EOF
-	for {
-		tok, err := p.peekTok()
-		if err != nil {
-			return nil, err
-		}
-		if tok.Type == EOF {
-			break
-		}
-		if tok.Type != DEF {
-			return nil, &ParseError{Msg: fmt.Sprintf("expected 'def' or EOF, got %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
-		}
-		def, err := p.parseDefinition()
-		if err != nil {
-			return nil, err
-		}
-		f.Definitions = append(f.Definitions, *def)
-	}
-	return f, nil
-}
-
-func (p *Parser) parseDefinition() (*Definition, error) {
-	tDef, err := p.expect(DEF)
-	if err != nil {
-		return nil, err
-	}
-	tName, err := p.expect(IDENT)
-	if err != nil {
-		return nil, err
-	}
-	_, err = p.expect(ASSIGN)
-	if err != nil {
-		return nil, err
-	}
-	e, err := p.parseExpression()
-	if err != nil {
-		return nil, err
-	}
-	// optional semicolon
-	if tok, _ := p.peekTok(); tok.Type == SEMICOLON {
-		_, _ = p.next()
-	}
-	return &Definition{Name: tName.Lit, Value: e, Pos: tDef.Pos}, nil
-}
-
-// Expression parsing with precedence: or -> and -> cmp -> add -> mul -> unary -> primary
-func (p *Parser) parseExpression() (Expr, error) { return p.parseOr() }
-
-func (p *Parser) parseOr() (Expr, error) {
-	left, err := p.parseAnd()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		tok, err := p.peekTok()
-		if err != nil {
-			return nil, err
-		}
-		if tok.Type != OROR {
-			break
-		}
-		_, _ = p.next()
-		right, err := p.parseAnd()
-		if err != nil {
-			return nil, err
-		}
-		left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
-	}
-	return left, nil
-}
-
-func (p *Parser) parseAnd() (Expr, error) {
-	left, err := p.parseCmp()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		tok, err := p.peekTok()
-		if err != nil {
-			return nil, err
-		}
-		if tok.Type != ANDAND {
-			break
-		}
-		_, _ = p.next()
-		right, err := p.parseCmp()
-		if err != nil {
-			return nil, err
-		}
-		left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
-	}
-	return left, nil
-}
-
-func (p *Parser) parseCmp() (Expr, error) {
-	left, err := p.parseAdd()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		tok, err := p.peekTok()
-		if err != nil {
-			return nil, err
-		}
-		switch tok.Type {
-		case EQEQ, NEQ, LANGLE, LTE, RANGLE, GTE:
-			_, _ = p.next()
-			right, err := p.parseAdd()
-			if err != nil {
-				return nil, err
-			}
-			left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
-		default:
-			return left, nil
-		}
-	}
-}
-
-func (p *Parser) parseAdd() (Expr, error) {
-	left, err := p.parseMul()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		tok, err := p.peekTok()
-		if err != nil {
-			return nil, err
-		}
-		if tok.Type != PLUS && tok.Type != MINUS {
-			return left, nil
-		}
-		_, _ = p.next()
-		right, err := p.parseMul()
-		if err != nil {
-			return nil, err
-		}
-		left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
-	}
-}
-
-func (p *Parser) parseMul() (Expr, error) {
-	left, err := p.parseUnary()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		tok, err := p.peekTok()
-		if err != nil {
-			return nil, err
-		}
-		if tok.Type != STAR && tok.Type != SLASH && tok.Type != PERCENT {
-			return left, nil
-		}
-		_, _ = p.next()
-		right, err := p.parseUnary()
-		if err != nil {
-			return nil, err
-		}
-		left = BinaryExpr{Left: left, Op: tok.Type, Right: right, Pos: tok.Pos}
-	}
-}
-
-func (p *Parser) parseUnary() (Expr, error) {
-	tok, err := p.peekTok()
-	if err != nil {
-		return nil, err
-	}
-	switch tok.Type {
-	case BANG, MINUS, PLUS:
-		_, _ = p.next()
-		right, err := p.parseUnary()
-		if err != nil {
-			return nil, err
-		}
-		return UnaryExpr{Op: tok.Type, Right: right, Pos: tok.Pos}, nil
+func (p *Parser) isTypeKeyword(kind TokenKind) bool {
+	switch kind {
+	case NONE:
+		return true
 	default:
-		return p.parsePrimary()
+		// Check if it's a primitive type by looking at the token value
+		switch p.curToken.Value {
+		case "bool", "i8", "i32", "i64", "u8", "u16", "u32", "u64",
+			"f32", "f64", "byte", "string":
+			return true
+		default:
+			return false
+		}
 	}
 }
 
-func (p *Parser) parsePrimary() (Expr, error) {
-	tok, err := p.next()
-	if err != nil {
-		return nil, err
+func (p *Parser) error(msg string) {
+	diagnostic := diag.Diagnostic{
+		Severity: diag.Error,
+		Message:  msg,
+		Span: diag.Span{
+			Start: p.curToken.Pos,
+			End:   p.curToken.Pos,
+		},
 	}
-	switch tok.Type {
-	case NUMBER:
-		return NumberExpr{Value: tok.Lit, Pos: tok.Pos}, nil
-	case STRING:
-		return StringExpr{Value: tok.Lit, Pos: tok.Pos}, nil
+	p.diagnostics = append(p.diagnostics, diagnostic)
+}
+
+func (p *Parser) expectToken(expected TokenKind) bool {
+	if p.curToken.Kind != expected {
+		p.error("expected " + string(expected) + ", got " + string(p.curToken.Kind))
+		return false
+	}
+	return true
+}
+
+func (p *Parser) parseFile() *File {
+	file := &File{
+		Pos_:  p.curToken.Pos,
+		Decls: []Decl{},
+	}
+
+	// Parse package declaration
+	if p.curToken.Kind == PACKAGE {
+		p.nextToken() // consume 'package'
+		if p.expectToken(IDENT) {
+			file.Package = p.curToken.Value
+			p.nextToken()
+		}
+	}
+
+	// Parse declarations
+	for p.curToken.Kind != EOF {
+		decl := p.parseDecl()
+		if decl != nil {
+			file.Decls = append(file.Decls, decl)
+		}
+	}
+
+	return file
+}
+
+func (p *Parser) parseDecl() Decl {
+	switch p.curToken.Kind {
+	case DEF:
+		return p.parseVarDecl()
+	case FUN:
+		return p.parseFunDecl()
+	default:
+		p.error("expected declaration, got " + string(p.curToken.Kind))
+		p.nextToken() // skip invalid token
+		return nil
+	}
+}
+
+func (p *Parser) parseVarDecl() *VarDecl {
+	pos := p.curToken.Pos
+	p.nextToken() // consume 'def'
+
+	if !p.expectToken(IDENT) {
+		return nil
+	}
+
+	name := p.curToken.Value
+	p.nextToken()
+
+	var typeName string
+	if p.curToken.Kind == COLON {
+		p.nextToken() // consume ':'
+		if p.curToken.Kind == IDENT || p.isTypeKeyword(p.curToken.Kind) {
+			typeName = p.curToken.Value
+			p.nextToken()
+		} else {
+			p.error("expected type identifier")
+		}
+	}
+
+	if !p.expectToken(ASSIGN) {
+		return nil
+	}
+	p.nextToken() // consume '='
+
+	init := p.parseExpr()
+
+	return &VarDecl{
+		Name: name,
+		Type: typeName,
+		Init: init,
+		Pos_: pos,
+	}
+}
+
+func (p *Parser) parseFunDecl() *FunDecl {
+	pos := p.curToken.Pos
+	p.nextToken() // consume 'fun'
+
+	if !p.expectToken(IDENT) {
+		return nil
+	}
+
+	name := p.curToken.Value
+	p.nextToken()
+
+	if !p.expectToken(LPAREN) {
+		return nil
+	}
+	p.nextToken() // consume '('
+
+	params := []Param{}
+	for p.curToken.Kind != RPAREN && p.curToken.Kind != EOF {
+		param := p.parseParam()
+		if param != nil {
+			params = append(params, *param)
+		}
+
+		if p.curToken.Kind == COMMA {
+			p.nextToken()
+		} else if p.curToken.Kind != RPAREN {
+			p.error("expected ',' or ')' in parameter list")
+			break
+		}
+	}
+
+	if !p.expectToken(RPAREN) {
+		return nil
+	}
+	p.nextToken() // consume ')'
+
+	if !p.expectToken(COLON) {
+		return nil
+	}
+	p.nextToken() // consume ':'
+
+	var returnType string
+	if p.curToken.Kind == IDENT || p.curToken.Kind == NONE {
+		returnType = p.curToken.Value
+		p.nextToken()
+	} else {
+		p.error("expected type identifier")
+	}
+
+	body := p.parseBlock()
+
+	return &FunDecl{
+		Name:   name,
+		Params: params,
+		Type:   returnType,
+		Body:   body,
+		Pos_:   pos,
+	}
+}
+
+func (p *Parser) parseParam() *Param {
+	if !p.expectToken(IDENT) {
+		return nil
+	}
+
+	pos := p.curToken.Pos
+	name := p.curToken.Value
+	p.nextToken()
+
+	if !p.expectToken(COLON) {
+		return nil
+	}
+	p.nextToken() // consume ':'
+
+	if p.curToken.Kind == IDENT || p.isTypeKeyword(p.curToken.Kind) {
+		typeName := p.curToken.Value
+		p.nextToken()
+
+		return &Param{
+			Name: name,
+			Type: typeName,
+			Pos_: pos,
+		}
+	} else {
+		p.error("expected type identifier")
+		return nil
+	}
+}
+
+func (p *Parser) parseBlock() *Block {
+	pos := p.curToken.Pos
+
+	if !p.expectToken(LBRACE) {
+		return nil
+	}
+	p.nextToken() // consume '{'
+
+	stmts := []Stmt{}
+	for p.curToken.Kind != RBRACE && p.curToken.Kind != EOF {
+		stmt := p.parseStmt()
+		if stmt != nil {
+			stmts = append(stmts, stmt)
+		}
+	}
+
+	if !p.expectToken(RBRACE) {
+		return nil
+	}
+	p.nextToken() // consume '}'
+
+	return &Block{
+		Stmts: stmts,
+		Pos_:  pos,
+	}
+}
+
+func (p *Parser) parseStmt() Stmt {
+	switch p.curToken.Kind {
+	case DEF:
+		return p.parseVarDecl()
+	case RETURN:
+		return p.parseReturnStmt()
+	case IF:
+		return p.parseIfStmt()
+	case WHILE:
+		return p.parseWhileStmt()
+	case FOR:
+		return p.parseForStmt()
+	default:
+		// Expression statement
+		expr := p.parseExpr()
+		return &ExprStmt{
+			X:    expr,
+			Pos_: expr.Pos(),
+		}
+	}
+}
+
+func (p *Parser) parseReturnStmt() *ReturnStmt {
+	pos := p.curToken.Pos
+	p.nextToken() // consume 'return'
+
+	result := p.parseExpr()
+
+	return &ReturnStmt{
+		Result: result,
+		Pos_:   pos,
+	}
+}
+
+func (p *Parser) parseIfStmt() *IfStmt {
+	pos := p.curToken.Pos
+	p.nextToken() // consume 'if'
+
+	cond := p.parseExpr()
+	body := p.parseBlock()
+
+	var elseStmt Stmt
+	if p.curToken.Kind == ELSE {
+		p.nextToken() // consume 'else'
+		if p.curToken.Kind == IF {
+			elseStmt = p.parseIfStmt()
+		} else {
+			elseStmt = p.parseBlock()
+		}
+	}
+
+	return &IfStmt{
+		Cond: cond,
+		Body: body,
+		Else: elseStmt,
+		Pos_: pos,
+	}
+}
+
+func (p *Parser) parseWhileStmt() *WhileStmt {
+	pos := p.curToken.Pos
+	p.nextToken() // consume 'while'
+
+	cond := p.parseExpr()
+	body := p.parseBlock()
+
+	return &WhileStmt{
+		Cond: cond,
+		Body: body,
+		Pos_: pos,
+	}
+}
+
+func (p *Parser) parseForStmt() Stmt {
+	pos := p.curToken.Pos
+	p.nextToken() // consume 'for'
+
+	// Check for 'for def var in expr' pattern
+	if p.curToken.Kind == DEF {
+		p.nextToken() // consume 'def'
+
+		if !p.expectToken(IDENT) {
+			return nil
+		}
+
+		varName := p.curToken.Value
+		p.nextToken()
+
+		if !p.expectToken(IN) {
+			return nil
+		}
+		p.nextToken() // consume 'in'
+
+		iter := p.parseExpr()
+		body := p.parseBlock()
+
+		return &ForInStmt{
+			Var:  varName,
+			Iter: iter,
+			Body: body,
+			Pos_: pos,
+		}
+	}
+
+	// For now, just skip other for loop forms
+	p.error("unsupported for loop syntax")
+	return nil
+}
+
+func (p *Parser) parseExpr() Expr {
+	return p.parseOrExpr()
+}
+
+func (p *Parser) parseOrExpr() Expr {
+	left := p.parseAndExpr()
+
+	for p.curToken.Kind == OR {
+		op := p.curToken.Value
+		pos := p.curToken.Pos
+		p.nextToken()
+		right := p.parseAndExpr()
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op,
+			Right: right,
+			Pos_:  pos,
+		}
+	}
+
+	return left
+}
+
+func (p *Parser) parseAndExpr() Expr {
+	left := p.parseCmpExpr()
+
+	for p.curToken.Kind == AND {
+		op := p.curToken.Value
+		pos := p.curToken.Pos
+		p.nextToken()
+		right := p.parseCmpExpr()
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op,
+			Right: right,
+			Pos_:  pos,
+		}
+	}
+
+	return left
+}
+
+func (p *Parser) parseCmpExpr() Expr {
+	left := p.parseAddExpr()
+
+	for p.curToken.Kind == EQ || p.curToken.Kind == NE || p.curToken.Kind == LT ||
+		p.curToken.Kind == LE || p.curToken.Kind == GT || p.curToken.Kind == GE {
+		op := p.curToken.Value
+		pos := p.curToken.Pos
+		p.nextToken()
+		right := p.parseAddExpr()
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op,
+			Right: right,
+			Pos_:  pos,
+		}
+	}
+
+	return left
+}
+
+func (p *Parser) parseAddExpr() Expr {
+	left := p.parseMulExpr()
+
+	for p.curToken.Kind == PLUS || p.curToken.Kind == MINUS {
+		op := p.curToken.Value
+		pos := p.curToken.Pos
+		p.nextToken()
+		right := p.parseMulExpr()
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op,
+			Right: right,
+			Pos_:  pos,
+		}
+	}
+
+	return left
+}
+
+func (p *Parser) parseMulExpr() Expr {
+	left := p.parseUnaryExpr()
+
+	for p.curToken.Kind == MUL || p.curToken.Kind == DIV || p.curToken.Kind == MOD {
+		op := p.curToken.Value
+		pos := p.curToken.Pos
+		p.nextToken()
+		right := p.parseUnaryExpr()
+		left = &BinaryExpr{
+			Left:  left,
+			Op:    op,
+			Right: right,
+			Pos_:  pos,
+		}
+	}
+
+	return left
+}
+
+func (p *Parser) parseUnaryExpr() Expr {
+	if p.curToken.Kind == NOT || p.curToken.Kind == MINUS || p.curToken.Kind == PLUS {
+		op := p.curToken.Value
+		pos := p.curToken.Pos
+		p.nextToken()
+		expr := p.parseUnaryExpr()
+		return &UnaryExpr{
+			Op:   op,
+			X:    expr,
+			Pos_: pos,
+		}
+	}
+
+	return p.parsePostfixExpr()
+}
+
+func (p *Parser) parsePostfixExpr() Expr {
+	left := p.parsePrimary()
+
+	for {
+		switch p.curToken.Kind {
+		case LPAREN:
+			// Function call
+			p.nextToken() // consume '('
+			args := []Expr{}
+
+			for p.curToken.Kind != RPAREN && p.curToken.Kind != EOF {
+				arg := p.parseExpr()
+				args = append(args, arg)
+
+				if p.curToken.Kind == COMMA {
+					p.nextToken()
+				} else if p.curToken.Kind != RPAREN {
+					p.error("expected ',' or ')' in argument list")
+					break
+				}
+			}
+
+			if !p.expectToken(RPAREN) {
+				return left
+			}
+			p.nextToken() // consume ')'
+
+			left = &CallExpr{
+				Fun:  left,
+				Args: args,
+				Pos_: left.Pos(),
+			}
+		default:
+			return left
+		}
+	}
+}
+
+func (p *Parser) parsePrimary() Expr {
+	switch p.curToken.Kind {
 	case IDENT:
-		// optional call: IDENT '(' args? ')'
-		name := tok.Lit
-		pos := tok.Pos
-		if t2, err := p.peekTok(); err == nil && t2.Type == LPAREN {
-			_, _ = p.next()
-			args, err := p.parseCallArgs()
-			if err != nil {
-				return nil, err
-			}
-			if _, err := p.expect(RPAREN); err != nil {
-				return nil, err
-			}
-			return CallExpr{Name: name, Args: args, Pos: pos}, nil
+		ident := &Ident{
+			Name: p.curToken.Value,
+			Pos_: p.curToken.Pos,
 		}
-		return IdentExpr{Name: name, Pos: pos}, nil
+		p.nextToken()
+		return ident
+
+	case INT, FLOAT, STRING:
+		lit := &BasicLit{
+			Kind:  string(p.curToken.Kind),
+			Value: p.curToken.Value,
+			Pos_:  p.curToken.Pos,
+		}
+		p.nextToken()
+		return lit
+
+	case TRUE, FALSE:
+		lit := &BasicLit{
+			Kind:  "BOOL",
+			Value: p.curToken.Value,
+			Pos_:  p.curToken.Pos,
+		}
+		p.nextToken()
+		return lit
+
+	case NONE:
+		lit := &BasicLit{
+			Kind:  "NONE",
+			Value: p.curToken.Value,
+			Pos_:  p.curToken.Pos,
+		}
+		p.nextToken()
+		return lit
+
+	case LBRACKET:
+		return p.parseArrayLit()
+
 	case LPAREN:
-		e, err := p.parseExpression()
-		if err != nil {
-			return nil, err
+		p.nextToken() // consume '('
+		expr := p.parseExpr()
+		if !p.expectToken(RPAREN) {
+			return expr
 		}
-		if _, err := p.expect(RPAREN); err != nil {
-			return nil, err
-		}
-		return e, nil
+		p.nextToken() // consume ')'
+		return expr
+
 	default:
-		return nil, &ParseError{Msg: fmt.Sprintf("unexpected token in expression: %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
+		p.error("unexpected token in expression: " + string(p.curToken.Kind))
+		p.nextToken() // skip invalid token
+		return &BasicLit{Kind: "INVALID", Value: "", Pos_: p.curToken.Pos}
 	}
 }
 
-// parseCallArgs parses zero or more arguments separated by commas.
-// Each argument is restricted to IDENT or NUMBER for now.
-func (p *Parser) parseCallArgs() ([]Expr, error) {
-	// Handle empty argument list: directly next is ')'
-	tok, err := p.peekTok()
-	if err != nil {
-		return nil, err
+func (p *Parser) parseArrayLit() *ArrayLit {
+	pos := p.curToken.Pos
+	p.nextToken() // consume '['
+
+	elements := []Expr{}
+	for p.curToken.Kind != RBRACKET && p.curToken.Kind != EOF {
+		elem := p.parseExpr()
+		elements = append(elements, elem)
+
+		if p.curToken.Kind == COMMA {
+			p.nextToken()
+		} else if p.curToken.Kind != RBRACKET {
+			p.error("expected ',' or ']' in array literal")
+			break
+		}
 	}
-	if tok.Type == RPAREN {
-		return nil, nil
+
+	if !p.expectToken(RBRACKET) {
+		return nil
 	}
-	var args []Expr
-	for {
-		// Parse a single arg (IDENT or NUMBER)
-		tok, err := p.next()
-		if err != nil {
-			return nil, err
-		}
-		switch tok.Type {
-		case IDENT:
-			args = append(args, IdentExpr{Name: tok.Lit, Pos: tok.Pos})
-		case NUMBER:
-			args = append(args, NumberExpr{Value: tok.Lit, Pos: tok.Pos})
-		default:
-			return nil, &ParseError{Msg: fmt.Sprintf("expected IDENT or NUMBER as argument, got %s (%q)", tok.Type, tok.Lit), Pos: tok.Pos}
-		}
-		// After an argument, allow comma or closing paren
-		tok2, err := p.peekTok()
-		if err != nil {
-			return nil, err
-		}
-		if tok2.Type == COMMA {
-			_, _ = p.next() // consume comma
-			continue
-		}
-		break
+	p.nextToken() // consume ']'
+
+	return &ArrayLit{
+		Elements: elements,
+		Pos_:     pos,
 	}
-	return args, nil
 }

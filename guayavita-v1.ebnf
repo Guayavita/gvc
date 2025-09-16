@@ -1,5 +1,5 @@
 # ======================================================
-# Guayavita v1 — Complete EBNF Grammar
+# Guayavita v1 — Complete EBNF Grammar (extended with strings + comments)
 # ======================================================
 
 <program>       ::= <package_decl> { <import_decl> } { <top_level_decl> }
@@ -8,10 +8,6 @@
 <package_decl>  ::= "package" <package_path>
 <package_path>  ::= <identifier> { "." <identifier> }
 
-# import pkg.path
-# import pkg.path { sym1, sym2 }
-# import pkg.path as alias
-# import { pkg.a, pkg.b { x, y } as alias, pkg.c }
 <import_decl>   ::= "import" ( <package_path> [ "{" <identifier_list> "}" ] [ "as" <identifier> ]
                               | "{" <import_clause> { "," <import_clause> } "}" )
 <import_clause> ::= <package_path> [ "{" <identifier_list> "}" ] [ "as" <identifier> ]
@@ -80,7 +76,6 @@
 
 <for_in_stmt>   ::= "for" "def" <identifier> "in" <expression> <block>
 
-# C-style for loop: ( init ; condition ; increment )
 <for_i_stmt>    ::= "for" "(" [ <var_decl> ] <expression>? ";" [ <var_decl> ] ")" <block>
 
 # --- Expressions (with precedence) ---------------------
@@ -94,7 +89,6 @@
 
 <unary_expr>    ::= [ "!" | "-" | "+" ] <postfix_expr>
 
-# postfix supports member access and calls
 <postfix_expr>  ::= <primary> { <postfix_op> }
 <postfix_op>    ::= "." <identifier> | "(" [ <arg_list> ] ")" | "[" <expression> "]"
 
@@ -118,16 +112,29 @@
 <enum_variant>  ::= <identifier> [ "(" <type_list> ")" ]
 
 # --- Literals & tokens --------------------------------
-<literal>       ::= <number> | <string> | "true" | "false"
+<literal>       ::= <number> | <string> | "true" | "false" | "none"
 
 <number>        ::= <integer> | <float>
 <integer>       ::= [ "-" ] <digit> { <digit> }
 <float>         ::= [ "-" ] <digit> { <digit> } "." <digit> { <digit> }
 
-<string>        ::= '"' { <utf8_char> } '"'   # UTF-8 sequence
+<string>        ::= '"' { <string_char> | <escape_sequence> } '"'
 
+<string_char>   ::= ? any Unicode character except " and \ ?
+<escape_sequence> ::= "\\" ( "n" | "t" | "r" | "\"" | "\\"
+                           | "u" <hex><hex><hex><hex>
+                           | "U" <hex><hex><hex><hex><hex><hex><hex><hex>
+                           | "x" <hex><hex> )
+
+# --- Comments -----------------------------------------
+<comment>       ::= <line_comment> | <block_comment>
+<line_comment>  ::= "//" { <any_char_except_newline> } ( "\n" | EOF )
+<block_comment> ::= "/*" { <any_char_except_*/> } "*/"
+
+# --- Identifiers --------------------------------------
 <identifier>    ::= <letter> { <letter> | <digit> | "_" }
 <identifier_list> ::= <identifier> { "," <identifier> }
 
 <letter>        ::= "a" .. "z" | "A" .. "Z"
 <digit>         ::= "0" .. "9"
+<hex>           ::= <digit> | "a".."f" | "A".."F"

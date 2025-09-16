@@ -1,320 +1,180 @@
 package syntax
 
-// Pos represents a position in the source input.
-type Pos struct {
-	Offset int // byte offset from start of input
-	Line   int // 1-based
-	Col    int // 1-based, in runes
+import "jmpeax.com/guayavita/gvc/internal/diag"
+
+// Core AST interfaces
+type Node interface {
+	Pos() diag.Position
 }
 
-// PackageDecl represents: "package IDENT".
-type PackageDecl struct {
-	Name string
-	Pos  Pos // position of the 'package' keyword
-}
-
-// File represents a parsed file with an optional package declaration and zero or more definitions.
-type File struct {
-	Package     *PackageDecl
-	Definitions []Definition
-}
-
-type Definition struct {
-	Name  string
-	Value Expr
-	Pos   Pos // position of the 'def' keyword
-}
-
-// Expr is the interface implemented by all expression nodes.
 type Expr interface {
-	isExpr()
+	Node
+	exprNode()
 }
 
-// IdentExpr is an expression that references another identifier.
-type IdentExpr struct {
-	Name string
-	Pos  Pos
+type Stmt interface {
+	Node
+	stmtNode()
 }
 
-func (IdentExpr) isExpr() {}
-
-// NumberExpr is an expression representing a numeric literal (int or float).
-type NumberExpr struct {
-	Value string // as written in source (underscores preserved)
-	Pos   Pos
+type Decl interface {
+	Node
+	declNode()
 }
 
-func (NumberExpr) isExpr() {}
-
-// CallExpr represents a function call expression: NAME '(' args? ')'
-// Arguments are limited to identifiers or numeric literals for now.
-type CallExpr struct {
-	Name string
-	Args []Expr
-	Pos  Pos // position of the function name
+// File represents a complete source file
+type File struct {
+	Package string
+	Decls   []Decl
+	Pos_    diag.Position
 }
 
-func (CallExpr) isExpr() {}
+func (f *File) Pos() diag.Position { return f.Pos_ }
 
-// Additional AST nodes to support extended EBNF grammar
-
-// Program is the root of a compilation unit according to the extended grammar.
-type Program struct {
-	Package *PackageDecl
-	Imports []ImportDecl
-	Decls   []TopLevelDecl
-}
-
-type ImportDecl struct {
-	Path  []string // package.path.segments
-	Items []string // optional selective imports inside { }
-	Pos   Pos
-}
-
-type TopLevelDecl interface{ isTopLevelDecl() }
-
-// ConstDecl corresponds to: [export] def name = expression
-type ConstDecl struct {
-	Exported bool
-	Name     string
-	Value    Expr
-	Pos      Pos
-}
-
-func (ConstDecl) isTopLevelDecl() {}
-
-// TypeDecl corresponds to: [export] type Name = (struct | enum)
-type TypeDecl struct {
-	Exported bool
-	Name     string
-	Type     TypeExpr // struct/enum/alias
-	Pos      Pos
-}
-
-func (TypeDecl) isTopLevelDecl() {}
-
-type StructDecl struct {
-	Fields []FieldDecl
-	Pos    Pos
-}
-type FieldDecl struct {
-	Name string
-	Type TypeExpr
-	Pos  Pos
-}
-
-type EnumDecl struct {
-	Variants []VariantDecl
-	Pos      Pos
-}
-type VariantDecl struct {
-	Name  string
-	Types []TypeExpr
-	Pos   Pos
-}
-
-// ImplBlock corresponds to: impl [<T,...>] Type { fun ... }
-type ImplBlock struct {
-	TypeParams []string
-	TypeName   string
-	Funs       []FunDecl
-	Pos        Pos
-}
-
-func (ImplBlock) isTopLevelDecl() {}
-
-// FunDecl corresponds to: [export] fun name [<T,...>](params): Type { statements }
+// Declarations
 type FunDecl struct {
-	Exported   bool
-	Name       string
-	TypeParams []string
-	Params     []Param
-	ReturnType TypeExpr
-	Body       []Stmt
-	Pos        Pos
+	Name   string
+	Params []Param
+	Type   string
+	Body   *Block
+	Pos_   diag.Position
 }
 
-func (FunDecl) isTopLevelDecl() {}
+func (d *FunDecl) Pos() diag.Position { return d.Pos_ }
+func (d *FunDecl) declNode()          {}
+
+type VarDecl struct {
+	Name string
+	Type string // optional, empty if not specified
+	Init Expr
+	Pos_ diag.Position
+}
+
+func (d *VarDecl) Pos() diag.Position { return d.Pos_ }
+func (d *VarDecl) declNode()          {}
+func (d *VarDecl) stmtNode()          {}
 
 type Param struct {
 	Name string
-	Type TypeExpr
-	Pos  Pos
+	Type string
+	Pos_ diag.Position
 }
 
-// Type AST
-
-type TypeExpr interface{ isType() }
-
-type PrimitiveType struct {
-	Name string
-	Pos  Pos
-}
-
-func (PrimitiveType) isType() {}
-
-type NamedType struct {
-	Name string
-	Pos  Pos
-}
-
-func (NamedType) isType() {}
-
-type OptionalType struct {
-	Inner TypeExpr
-	Pos   Pos
-}
-
-func (OptionalType) isType() {}
-
-type ArrayType struct {
-	Inner TypeExpr
-	Pos   Pos
-}
-
-func (ArrayType) isType() {}
-
-type TupleType struct {
-	Elems []TypeExpr
-	Pos   Pos
-}
-
-func (TupleType) isType() {}
+func (p *Param) Pos() diag.Position { return p.Pos_ }
 
 // Statements
-
-type Stmt interface{ isStmt() }
-
-type VarDecl struct {
-	Name  string
-	Ty    TypeExpr
-	Value Expr
-	Pos   Pos
+type Block struct {
+	Stmts []Stmt
+	Pos_  diag.Position
 }
 
-func (VarDecl) isStmt() {}
+func (s *Block) Pos() diag.Position { return s.Pos_ }
+func (s *Block) stmtNode()          {}
+
+type AssignStmt struct {
+	Left  Expr
+	Right Expr
+	Pos_  diag.Position
+}
+
+func (s *AssignStmt) Pos() diag.Position { return s.Pos_ }
+func (s *AssignStmt) stmtNode()          {}
 
 type ExprStmt struct {
-	E   Expr
-	Pos Pos
+	X    Expr
+	Pos_ diag.Position
 }
 
-func (ExprStmt) isStmt() {}
-
-type HandleStmt struct {
-	Expr    Expr
-	OkName  string
-	OkBody  []Stmt
-	ErrName string
-	ErrBody []Stmt
-	Pos     Pos
-}
-
-func (HandleStmt) isStmt() {}
+func (s *ExprStmt) Pos() diag.Position { return s.Pos_ }
+func (s *ExprStmt) stmtNode()          {}
 
 type ReturnStmt struct {
-	Value Expr
-	Pos   Pos
+	Result Expr
+	Pos_   diag.Position
 }
 
-func (ReturnStmt) isStmt() {}
+func (s *ReturnStmt) Pos() diag.Position { return s.Pos_ }
+func (s *ReturnStmt) stmtNode()          {}
 
 type IfStmt struct {
-	Cond    Expr
-	Then    []Stmt
-	ElseIfs []IfStmt // only Cond+Then used for else-if chain
-	Else    []Stmt
-	Pos     Pos
+	Cond Expr
+	Body *Block
+	Else Stmt // can be another IfStmt for "else if" or Block for "else"
+	Pos_ diag.Position
 }
 
-func (IfStmt) isStmt() {}
+func (s *IfStmt) Pos() diag.Position { return s.Pos_ }
+func (s *IfStmt) stmtNode()          {}
 
 type WhileStmt struct {
 	Cond Expr
-	Body []Stmt
-	Pos  Pos
+	Body *Block
+	Pos_ diag.Position
 }
 
-func (WhileStmt) isStmt() {}
+func (s *WhileStmt) Pos() diag.Position { return s.Pos_ }
+func (s *WhileStmt) stmtNode()          {}
 
 type ForInStmt struct {
-	Name     string
-	Iterable Expr
-	Body     []Stmt
-	Pos      Pos
+	Var  string
+	Iter Expr
+	Body *Block
+	Pos_ diag.Position
 }
 
-func (ForInStmt) isStmt() {}
+func (s *ForInStmt) Pos() diag.Position { return s.Pos_ }
+func (s *ForInStmt) stmtNode()          {}
 
-type ForIStmt struct {
-	Init VarDecl
-	Cond Expr
-	Post VarDecl
-	Body []Stmt
-	Pos  Pos
-}
-
-func (ForIStmt) isStmt() {}
-
-// Additional expressions
-
-type StringExpr struct {
-	Value string
-	Pos   Pos
-}
-
-func (StringExpr) isExpr() {}
-
-type BoolExpr struct {
-	Value bool
-	Pos   Pos
-}
-
-func (BoolExpr) isExpr() {}
-
-type MemberExpr struct {
-	Object Expr
-	Name   string
-	Pos    Pos
-}
-
-func (MemberExpr) isExpr() {}
-
-type CastExpr struct {
-	Value Expr
-	Ty    TypeExpr
-	Pos   Pos
-}
-
-func (CastExpr) isExpr() {}
-
-type ListExpr struct {
-	Elems []Expr
-	Pos   Pos
-}
-
-func (ListExpr) isExpr() {}
-
-type TupleExpr struct {
-	Elems []Expr
-	Pos   Pos
-}
-
-func (TupleExpr) isExpr() {}
-
-type UnaryExpr struct {
-	Op    TokenType
-	Right Expr
-	Pos   Pos
-}
-
-func (UnaryExpr) isExpr() {}
-
+// Expressions
 type BinaryExpr struct {
 	Left  Expr
-	Op    TokenType
+	Op    string
 	Right Expr
-	Pos   Pos
+	Pos_  diag.Position
 }
 
-func (BinaryExpr) isExpr() {}
+func (e *BinaryExpr) Pos() diag.Position { return e.Pos_ }
+func (e *BinaryExpr) exprNode()          {}
+
+type UnaryExpr struct {
+	Op   string
+	X    Expr
+	Pos_ diag.Position
+}
+
+func (e *UnaryExpr) Pos() diag.Position { return e.Pos_ }
+func (e *UnaryExpr) exprNode()          {}
+
+type CallExpr struct {
+	Fun  Expr
+	Args []Expr
+	Pos_ diag.Position
+}
+
+func (e *CallExpr) Pos() diag.Position { return e.Pos_ }
+func (e *CallExpr) exprNode()          {}
+
+type Ident struct {
+	Name string
+	Pos_ diag.Position
+}
+
+func (e *Ident) Pos() diag.Position { return e.Pos_ }
+func (e *Ident) exprNode()          {}
+
+type BasicLit struct {
+	Kind  string // "INT", "FLOAT", "STRING", "BOOL", "NONE"
+	Value string
+	Pos_  diag.Position
+}
+
+func (e *BasicLit) Pos() diag.Position { return e.Pos_ }
+func (e *BasicLit) exprNode()          {}
+
+type ArrayLit struct {
+	Elements []Expr
+	Pos_     diag.Position
+}
+
+func (e *ArrayLit) Pos() diag.Position { return e.Pos_ }
+func (e *ArrayLit) exprNode()          {}
