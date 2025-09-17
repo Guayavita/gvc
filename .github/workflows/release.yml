@@ -28,6 +28,30 @@ jobs:
           go-version: '1.24.1'
           check-latest: true
 
+      - name: Install LLVM 21 on Linux (apt.llvm.org)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget software-properties-common gnupg
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          # Make LLVM 21 the default 'clang', 'clang++' and 'llvm-config'
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
+          if command -v /usr/bin/llvm-config-21 >/dev/null 2>&1; then sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-21 100; fi
+
+      - name: Add LLVM 21 to PATH (Linux)
+        if: matrix.os == 'linux'
+        run: echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+
+      - name: Install LLVM 21 on macOS (Homebrew)
+        if: matrix.os == 'darwin'
+        run: |
+          brew update
+          brew install llvm@21 || true
+          echo "$(brew --prefix llvm@21)/bin" >> "$GITHUB_PATH"
+
       - name: Build with Makefile
         run: |
           make clean
@@ -43,7 +67,8 @@ jobs:
           EXT=""
           if [ "${{ matrix.os }}" = "windows" ]; then EXT=".exe"; fi
           OUT="$NAME$EXT"
-          cp bin/guayavita "$OUT"
+          SRC="bin/guayavita$EXT"
+          cp "$SRC" "$OUT"
           echo "ARTIFACT=$OUT" >> $GITHUB_ENV
 
       - name: Upload artifact

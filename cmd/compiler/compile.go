@@ -11,6 +11,7 @@ import (
 	"jmpeax.com/guayavita/gvc/internal/codegen"
 	"jmpeax.com/guayavita/gvc/internal/fs"
 	"jmpeax.com/guayavita/gvc/internal/syntax"
+	"tinygo.org/x/go-llvm"
 )
 
 var compileCmd = &cobra.Command{
@@ -73,6 +74,8 @@ var compileCmd = &cobra.Command{
 
 			if target != "" {
 				builder.SetTarget(target)
+			} else {
+				builder.SetDefaultTarget()
 			}
 
 			// Determine compilation mode
@@ -134,6 +137,18 @@ var compileCmd = &cobra.Command{
 
 	},
 }
+var targets = &cobra.Command{
+	Use:  "targets",
+	Long: "List supported targets",
+	Run: func(cmd *cobra.Command, args []string) {
+		log.Info("Supported targets:")
+		log.Infof("Default target: %s", llvm.DefaultTargetTriple())
+		supportedTargets := codegen.SupportedTriples()
+		for _, target := range supportedTargets {
+			log.Info(target)
+		}
+	},
+}
 
 func init() {
 	compileCmd.Flags().Bool("syntax-only", false, "Syntax only, do not output binaries")
@@ -144,5 +159,5 @@ func init() {
 	compileCmd.Flags().StringP("output-dir", "o", "./bin", "Output directory for generated files")
 }
 func Commands() []*cobra.Command {
-	return []*cobra.Command{compileCmd}
+	return []*cobra.Command{compileCmd, targets}
 }

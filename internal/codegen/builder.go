@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"runtime"
 
 	"jmpeax.com/guayavita/gvc/internal/diag"
 	"jmpeax.com/guayavita/gvc/internal/syntax"
@@ -35,6 +36,7 @@ type CodeBuilder interface {
 	SetSource(src string) CodeBuilder
 	Build(ast *syntax.File) error
 	Diagnostics() []diag.Diagnostic
+	SetDefaultTarget()
 }
 
 // LLVMCodeBuilder implements CodeBuilder using LLVM
@@ -51,6 +53,10 @@ type LLVMCodeBuilder struct {
 // NewCodeBuilder creates a new LLVM-based code builder
 func NewCodeBuilder() CodeBuilder {
 	return &LLVMCodeBuilder{}
+}
+
+func (b *LLVMCodeBuilder) SetDefaultTarget() {
+	b.config.Target = generateDefaultLLVMTriple(runtime.GOOS, runtime.GOARCH)
 }
 
 func (b *LLVMCodeBuilder) SetTarget(target string) CodeBuilder {
@@ -86,6 +92,11 @@ func (b *LLVMCodeBuilder) Diagnostics() []diag.Diagnostic {
 
 // Build compiles the AST according to the builder configuration
 func (b *LLVMCodeBuilder) Build(ast *syntax.File) error {
+	llvm.InitializeAllTargetInfos()
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllAsmParsers()
+	llvm.InitializeAllAsmPrinters()
 	// Initialize LLVM components
 	if err := b.initializeLLVM(); err != nil {
 		// No position info here; record a generic diagnostic
@@ -154,4 +165,43 @@ func (b *LLVMCodeBuilder) errorAt(node syntax.Node, format string, a ...any) err
 	}
 	b.addDiagnostic(diag.Error, pos, msg)
 	return fmt.Errorf("%s", msg)
+}
+
+// GenerateLLVMTriple builds the LLVM triple for a given OS/arch pair.
+func generateDefaultLLVMTriple(goos, goarch string) string {
+	switch goos {
+	case "darwin":
+		if goarch == "amd64" {
+			return "x86_64-apple-darwin"
+		} else if goarch == "arm64" {
+			return "arm64-apple-darwin"
+		}
+	case "ios":
+		if goarch == "arm64" {
+			return "arm64-apple-ios"
+		}
+	case "linux":
+		switch goarch {
+		case "amd64":
+			return "x86_64-unknown-linux-gnu"
+		case "arm64":
+			return "aarch64-unknown-linux-gnu"
+		case "riscv64":
+			return "riscv64-unknown-linux-gnu"
+		}
+	case "windows":
+		switch goarch {
+		case "amd64":
+			return "x86_64-pc-windows-msvc"
+		case "arm64":
+			return "aarch64-pc-windows-msvc"
+		case "riscv64":
+			return "riscv64-pc-windows-msvc"
+		}
+	case "wasm":
+		if goarch == "wasm32" {
+			return "wasm32-wasi"
+		}
+	}
+	return "unknown-unknown-unknown"
 }

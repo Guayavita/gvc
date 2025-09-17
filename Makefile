@@ -29,7 +29,7 @@ $(BIN_DIR):
 
 build: $(BIN_DIR) test
 	@echo "Building $(OUT)"
-	GOFLAGS= CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(OUT) .
+	GOFLAGS= CGO_ENABLED=0 go build -tags=llvm21 -ldflags "$(LDFLAGS)" -o $(OUT) .
 	@echo "Built $(OUT)"
 
 test:

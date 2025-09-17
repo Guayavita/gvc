@@ -37,3 +37,30 @@ func (b *LLVMCodeBuilder) generateIR(ast *syntax.File) error {
 
 	return nil
 }
+
+func SupportedTriples() []string {
+	return []string{
+		// Apple macOS + iOS
+		"x86_64-apple-darwin",
+		"aarch64-apple-darwin",
+		"x86_64-apple-ios",
+		"aarch64-apple-ios",
+
+		// Linux
+		"armv7-unknown-linux-gnueabihf",
+		"aarch64-unknown-linux-gnu",
+		"riscv64-unknown-linux-gnu",
+		"x86_64-unknown-linux-gnu",
+
+		// Windows
+		"aarch64-pc-windows-msvc",
+		"aarch64-pc-windows-gnu",
+		"riscv64-pc-windows-gnu", // experimental
+		"x86_64-pc-windows-msvc",
+		"x86_64-pc-windows-gnu",
+
+		// WebAssembly
+		"wasm32-unknown-unknown",
+		"wasm64-unknown-unknown", // experimental
+	}
+}

@@ -19,6 +19,18 @@ jobs:
           go-version: '1.24.1'
           check-latest: true
 
+      - name: Install LLVM 21 from apt.llvm.org
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget software-properties-common gnupg
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          # Make LLVM 21 the default 'clang', 'clang++' and 'llvm-config'
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
+          if command -v /usr/bin/llvm-config-21 >/dev/null 2>&1; then sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-21 100; fi
+
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -36,4 +48,7 @@ jobs:
         run: go vet ./...
 
       - name: Build
+        env:
+          # Ensure Go LLVM bindings can find the correct llvm-config
+          PATH: /usr/lib/llvm-21/bin:${PATH}
         run: go build -v ./...

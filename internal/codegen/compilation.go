@@ -15,13 +15,6 @@ import (
 func (b *LLVMCodeBuilder) compileToBinary() error {
 	outputName := b.getOutputName()
 
-	// Initialize target and target machine
-	llvm.InitializeAllTargetInfos()
-	llvm.InitializeAllTargets()
-	llvm.InitializeAllTargetMCs()
-	llvm.InitializeAllAsmParsers()
-	llvm.InitializeAllAsmPrinters()
-
 	target, err := llvm.GetTargetFromTriple(b.getTargetTriple())
 	if err != nil {
 		return fmt.Errorf("failed to get target: %w", err)
